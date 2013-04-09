@@ -1,0 +1,36 @@
+Manifest-Version: 1.0
+Service-Component: OSGI-INF/serviceComponents.xml
+Export-Package: eu.fusepool.enhancer.engines.dictionaryannotator;uses:
+ ="org.apache.clerezza.rdf.core,javax.xml.parsers,org.w3c.dom,org.apac
+ he.stanbol.enhancer.servicesapi.rdf,org.apache.clerezza.rdf.core.impl
+ ,org.slf4j,org.osgi.service.component,org.apache.stanbol.enhancer.ser
+ vicesapi.helper,org.apache.stanbol.enhancer.servicesapi.impl,org.apac
+ he.stanbol.enhancer.servicesapi,org.osgi.service.cm";version="1.0.0.S
+ NAPSHOT"
+Bundle-ClassPath: .,nlp-1.2.7.jar
+Built-By: Gabor
+Bundle-Category: Stanbol Enhancer
+Tool: Bnd-1.15.0
+Bundle-Name: Fusepool Dictionary Annotator Enhancer Engine
+Created-By: Apache Maven Bundle Plugin
+Bundle-Vendor: Apache Stanbol
+Build-Jdk: 1.7.0_15
+Bundle-Version: 1.0.0.SNAPSHOT
+Bnd-LastModified: 1365511075303
+Bundle-ManifestVersion: 2
+Bundle-Description: This module is an implementation of a dictionary a
+ nnotator.
+Bundle-License: http://www.apache.org/licenses/LICENSE-2.0.txt
+Embed-Dependency: nlp;scope=compile
+Bundle-DocURL: http://stanbol.apache.org
+Import-Package: javax.swing,javax.swing.filechooser,javax.swing.text,j
+ avax.xml.parsers,javax.xml.validation,org.apache.clerezza.rdf.core,or
+ g.apache.clerezza.rdf.core.impl,org.apache.stanbol.enhancer.servicesa
+ pi;version="[0.10.0,1)",org.apache.stanbol.enhancer.servicesapi.helpe
+ r;version="[0.10.0,1)",org.apache.stanbol.enhancer.servicesapi.impl;v
+ ersion="[0.10.0,1)",org.apache.stanbol.enhancer.servicesapi.rdf;versi
+ on="[0.10.0,1)",org.osgi.service.cm;version="[1.2.0,2)",org.osgi.serv
+ ice.component;version="[1.0.0,2)",org.slf4j;version="[1.6.1,2)",org.w
+ 3c.dom,org.xml.sax
+Bundle-SymbolicName: enhancer.engines.dictionaryannotator
+

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <property name="vm.args" value=""/>
+  <pathconvert pathsep=";" property="plugins.jars">
+    <path refid="maven.runtime.classpath"/>
+    <map to="" from="C:\Users\Gábor\Documents\NetBeansProjects\eu.fusepool.enhancer.engines.dictionaryannotator\target\classes"/>
+  </pathconvert>
+  <makeurl property="urls" separator=" ">
+    <path path="${plugins.jars}"/>
+    <path location="C:\Users\Gábor\Documents\NetBeansProjects\eu.fusepool.enhancer.engines.dictionaryannotator\target/enhancer.engines.dictionaryannotator-1.0-SNAPSHOT.jar"/>
+  </makeurl>
+  <propertyfile file="C:\Users\Gábor\Documents\NetBeansProjects\eu.fusepool.enhancer.engines.dictionaryannotator\target/run.properties">
+    <entry value="${urls}" key="felix.auto.start"/>
+    <entry value="uninstall,install,update,start" key="felix.auto.deploy.action"/>
+    <entry value="C:\Users\Gábor\Documents\NetBeansProjects\eu.fusepool.enhancer.engines.dictionaryannotator\target\felix-cache" key="org.osgi.framework.storage"/>
+    <entry value="*" key="org.osgi.framework.bootdelegation"/>
+  </propertyfile>
+  <makeurl file="C:\Users\Gábor\Documents\NetBeansProjects\eu.fusepool.enhancer.engines.dictionaryannotator\target/run.properties" property="run.properties.url"/>
+  <java fork="true" jar="${maven.dependency.org.apache.felix.org.apache.felix.main.jar.path}">
+    <sysproperty value="${run.properties.url}" key="felix.config.properties"/>
+    <jvmarg line="${vm.args}"/>
+  </java>
+</target>
+</project>
