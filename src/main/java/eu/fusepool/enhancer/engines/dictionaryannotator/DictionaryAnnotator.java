@@ -62,12 +62,6 @@ public class DictionaryAnnotator {
         caseSensitiveLength = _caseSensitiveLength;
         eliminateOverlapping = _eliminateOverlapping;
         
-        System.out.println(dictionaryStream);
-        System.out.println(stemmingLanguage);
-        System.out.println(caseSensitive);
-        System.out.println(caseSensitiveLength);
-        System.out.println(eliminateOverlapping);
-        
         if(stemmingLanguage == null)
         {
             stemmingLanguage = "None";
