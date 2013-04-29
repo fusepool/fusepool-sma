@@ -15,12 +15,19 @@
  */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
+import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,12 +77,24 @@ import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_EN
 public class DictionaryAnnotatorEnhancerEngine
         extends AbstractEnhancementEngine<RuntimeException,RuntimeException>
         implements EnhancementEngine, ServiceProperties {
-    
-    @Property
-    public static final String ONTOLOGY_NAME = "eu.fusepool.enhancer.engines.dictionaryannotator.name";
 
     @Property
-    public static final String ONTOLOGY_DESCRIPTION = "eu.fusepool.enhancer.engines.dictionaryannotator.description";
+    public static final String DESCRIPTION = "eu.fusepool.enhancer.engines.dictionaryannotator.description";
+    
+    @Property
+    public static final String GRAPH_URI = "eu.fusepool.enhancer.engines.dictionaryannotator.graphURI";
+    
+    @Property
+    public static final String LABEL_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.labelField";
+    
+    @Property
+    public static final String URI_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.URIField";   
+    
+    @Property(cardinality = 20)
+    public static final String ENTITY_PREFIXES = "eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes";  
+    
+    @Property
+    public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
     
     @Property(options={
         @PropertyOption(value="None",name="None"),
@@ -95,22 +114,16 @@ public class DictionaryAnnotatorEnhancerEngine
         @PropertyOption(value="Swedish",name="Swedish"),
         @PropertyOption(value="Turkish",name="Turkish")
         },value="None")
-    public static final String ONTOLOGY_STEMMING_LANGUAGE = "eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage";
+    public static final String STEMMING_LANGUAGE = "eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage";
     
     @Property(boolValue=false)
-    public static final String ONTOLOGY_CASE_SENSITIVE = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive";
+    public static final String CASE_SENSITIVE = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive";
 
     @Property(intValue=3)
-    public static final String ONTOLOGY_CASE_SENSITIVE_LENGTH = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength";
+    public static final String CASE_SENSITIVE_LENGTH = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength";
     
     @Property(boolValue=false)
-    public static final String ONTOLOGY_ELIMINATE_OVERLAPS = "eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping";
-    
-    @Property
-    public static final String ONTOLOGY_TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
-    
-    @Property
-    public static final String ONTOLOGY_PATH = "eu.fusepool.enhancer.engines.dictionaryannotator.path";
+    public static final String ELIMINATE_OVERLAPS = "eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping";
     
     /**
      * Default value for the {@link Constants#SERVICE_RANKING} used by this engine.
@@ -139,14 +152,16 @@ public class DictionaryAnnotatorEnhancerEngine
     private static final Logger log = LoggerFactory.getLogger(DictionaryAnnotatorEnhancerEngine.class);
     
     private DictionaryAnnotator annotator;
-    private String name;
     private String description;
+    private String graphURI;
+    private String labelField;
+    private String URIField;
+    private String type;
+    private List<String> entityPrefixes;
     private String stemmingLanguage;
     private Boolean caseSensitive;
     private Integer caseSensitiveLength;
     private Boolean eliminateOverlapping;
-    private String type;
-    private String path;
     
     @Activate
     @Override
@@ -154,39 +169,122 @@ public class DictionaryAnnotatorEnhancerEngine
         super.activate(context);
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
+            
+            Object gu = config.get(GRAPH_URI);
+            graphURI = gu == null || gu.toString().isEmpty() ? null : gu.toString();
 
-            Object n = config.get(ONTOLOGY_NAME);
-            name = n == null || n.toString().isEmpty() ? null : n.toString();
+            Object lf = config.get(LABEL_FIELD);
+            labelField = lf == null || lf.toString().isEmpty() ? null : lf.toString();
             
-            Object d = config.get(ONTOLOGY_DESCRIPTION);
-            description = d == null || d.toString().isEmpty() ? null : d.toString();
-
-            Object s = config.get(ONTOLOGY_STEMMING_LANGUAGE);
-            stemmingLanguage = s == null ? "None" : s.toString();
+            Object uf = config.get(URI_FIELD);
+            URIField = uf == null || uf.toString().isEmpty() ? null : uf.toString();
             
-            Object c = config.get(ONTOLOGY_CASE_SENSITIVE);
-            caseSensitive = c == null || c.toString().isEmpty() ? null : (Boolean) c;
-            
-            Object cl = config.get(ONTOLOGY_CASE_SENSITIVE_LENGTH);
-            caseSensitiveLength = cl == null || cl.toString().isEmpty() ? null : (Integer) cl;
-
-            Object e = config.get(ONTOLOGY_ELIMINATE_OVERLAPS);
-            eliminateOverlapping = e == null || e.toString().isEmpty() ? null : (Boolean) e;
-            
-            Object t = config.get(ONTOLOGY_TYPE);
+            Object ep = config.get(ENTITY_PREFIXES);
+            if (ep instanceof Iterable<?>) {
+                entityPrefixes = new ArrayList<String>();
+                for (Object o : (Iterable<Object>) ep) {
+                    if (o != null && !o.toString().isEmpty()) {
+                        entityPrefixes.add(o.toString());
+                    } else {
+                        log.warn("Entity prefixes configuration '{}' contained illegal value '{}' -> removed", ep, o);
+                    }
+                }
+            } else if (ep.getClass().isArray()) {
+                entityPrefixes = new ArrayList<String>();
+                for (Object modelObj : (Object[]) ep) {
+                    if (modelObj != null) {
+                        entityPrefixes.add(modelObj.toString());
+                    } else {
+                        log.warn("Entity prefixes configuration '{}' contained illegal value '{}' -> removed",
+                                Arrays.toString((Object[]) ep), ep);
+                    }
+                }
+            } else {
+                entityPrefixes = null;
+            }
+                  
+            Object t = config.get(TYPE);
             type = t == null || t.toString().isEmpty() ? null : t.toString();
             
-            Object p = config.get(ONTOLOGY_PATH);
-            path = p == null || p.toString().isEmpty() ? null : p.toString();
+            Object sl = config.get(STEMMING_LANGUAGE);
+            stemmingLanguage = sl == null ? "None" : sl.toString();
+            
+            Object cs = config.get(CASE_SENSITIVE);
+            caseSensitive = cs == null || cs.toString().isEmpty() ? null : (Boolean) cs;
+            
+            Object csl = config.get(CASE_SENSITIVE_LENGTH);
+            caseSensitiveLength = csl == null || csl.toString().isEmpty() ? null : (Integer) csl;
+
+            Object eo = config.get(ELIMINATE_OVERLAPS);
+            eliminateOverlapping = eo == null || eo.toString().isEmpty() ? null : (Boolean) eo;
         }
-        InputStream dictionaryStream = this.getClass().getResourceAsStream("/dictionaries/" + path);
-        if(dictionaryStream == null) 
-        {
-            log.warn("Invalid path for classifier file: " + path);
+
+        String query = "";
+        for (String prefix : entityPrefixes) {
+            query += "PREFIX " + prefix + "\n";
         }
-        else
-        {
-            annotator = new DictionaryAnnotator(dictionaryStream, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
+        query += "SELECT distinct ?uri ?label WHERE { "
+                + "?uri a " + URIField + " ."
+                + "?uri " + labelField + " ?label ."
+                + " }";
+        
+        String sparqlEndPoint = "http://localhost:8080/sparql";
+
+        HttpURLConnection connection = null;
+        InputStream dictionaryStream = null;
+        
+        try {
+            //Concating request parameters
+            String urlParameters = "graphuri=" + URLEncoder.encode(graphURI, "UTF-8") +
+                               "&query=" + URLEncoder.encode(query, "UTF-8");
+            
+            //Create connection
+            URL url = new URL(sparqlEndPoint);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type",
+                    "application/x-www-form-urlencoded");
+
+            connection.setRequestProperty("Content-Length", ""
+                    + Integer.toString(urlParameters.getBytes().length));
+            connection.setRequestProperty("Content-Language", "en-US");
+
+            connection.setUseCaches(false);
+            connection.setDoInput(true);
+            connection.setDoOutput(true);
+
+            //Send request
+            DataOutputStream wr = new DataOutputStream(
+                    connection.getOutputStream());
+            wr.writeBytes(urlParameters);
+            wr.flush();
+            wr.close();
+
+            //Get Response	
+            dictionaryStream = connection.getInputStream();
+            
+            if(dictionaryStream != null) 
+            {
+                annotator = new DictionaryAnnotator(dictionaryStream, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
+            }
+            else
+            {
+                log.error("Dictionary cannot be NULL");
+            }
+        } catch (IOException e) {
+            log.error("Error occurred while querying the entityhub", e);
+            e.printStackTrace();
+        } finally {
+            if (dictionaryStream != null) {
+                try {
+                    dictionaryStream.close();
+                } catch (IOException ex) {
+                    log.error("Unable to close inputstream", ex);
+                }
+            }
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -252,85 +350,6 @@ public class DictionaryAnnotatorEnhancerEngine
                 ci.getLock().writeLock().unlock();
             }
         }
-//        LiteralFactory literalFactory = LiteralFactory.getInstance();
-//        // Retrieve the existing text annotations (requires read lock)
-//        Map<NER, List<UriRef>> textAnnotations = new HashMap<NER, List<UriRef>>();
-//        // the language extracted for the parsed content or NULL if not
-//        // available
-//        String contentLangauge;
-//        ci.getLock().readLock().lock();
-//        try {
-//            contentLangauge = EnhancementEngineHelper.getLanguage(ci);
-//            for (Iterator<Triple> it = graph.filter(null, RDF_TYPE, TechnicalClasses.ENHANCER_TEXTANNOTATION); it.hasNext();) {
-//                UriRef uri = (UriRef) it.next().getSubject();
-//                if (graph.filter(uri, org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_RELATION, null).hasNext()) {
-//                    // this is not the most specific occurrence of this name:
-//                    // skip
-//                    continue;
-//                }
-//                NamedEntity namedEntity = NamedEntity.createFromTextAnnotation(graph, uri);
-//                if (namedEntity != null) {
-//                    // This is a first occurrence, collect any subsumed
-//                    // annotations
-//                    List<UriRef> subsumed = new ArrayList<UriRef>();
-//                    for (Iterator<Triple> it2 = graph.filter(null, org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_RELATION, uri); it2
-//                            .hasNext();) {
-//                        subsumed.add((UriRef) it2.next().getSubject());
-//                    }
-//                    textAnnotations.put(namedEntity, subsumed);
-//                }
-//            }
-//        } finally {
-//            ci.getLock().readLock().unlock();
-//        }
-//        // search the suggestions
-//        Map<NER, List<Suggestion>> suggestions = new HashMap<NER, List<Suggestion>>(
-//                textAnnotations.size());
-//        for (Map.Entry<NER, List<UriRef>> entry : textAnnotations.entrySet()) {
-//            try {
-//                List<Suggestion> entitySuggestions = computeEntityRecommentations(site, entry.getKey(),
-//                        entry.getValue(), contentLangauge);
-//                if (entitySuggestions != null && !entitySuggestions.isEmpty()) {
-//                    suggestions.put(entry.getKey(), entitySuggestions);
-//                }
-//            } catch (EntityhubException e) {
-//                throw new EngineException(this, ci, e);
-//            }
-//        }
-//        // now write the results (requires write lock)
-//        ci.getLock().writeLock().lock();
-//        try {
-//            RdfValueFactory factory = RdfValueFactory.getInstance();
-//            Map<String, Representation> entityData = new HashMap<String, Representation>();
-//            for (Map.Entry<NamedEntity, List<Suggestion>> entitySuggestions : suggestions.entrySet()) {
-//                List<UriRef> subsumed = textAnnotations.get(entitySuggestions.getKey());
-//                List<NonLiteral> annotationsToRelate = new ArrayList<NonLiteral>(subsumed);
-//                annotationsToRelate.add(entitySuggestions.getKey().getEntity());
-//                for (Suggestion suggestion : entitySuggestions.getValue()) {
-//                    log.debug("Add Suggestion {} for {}", suggestion.getEntity().getId(),
-//                            entitySuggestions.getKey());
-//                    EnhancementRDFUtils.writeEntityAnnotation(this, literalFactory, graph, ci.getUri(),
-//                            annotationsToRelate, suggestion, nameField,
-//                            // TODO: maybe we want labels in a different
-//                            // language than the
-//                            // language of the content (e.g. Accept-Language
-//                            // header)?!
-//                            contentLangauge == null ? DEFAULT_LANGUAGE : contentLangauge);
-//                    if (dereferenceEntities) {
-//                        entityData.put(suggestion.getEntity().getId(), suggestion.getEntity()
-//                                .getRepresentation());
-//                    }
-//                }
-//            }
-//            // if dereferneceEntities is true the entityData will also contain
-//            // all
-//            // Representations to add! If false entityData will be empty
-//            for (Representation rep : entityData.values()) {
-//                graph.addAll(factory.toRdfRepresentation(rep).getRdfGraph());
-//            }
-//        } finally {
-//            ci.getLock().writeLock().unlock();
-//        }
     }
 
     @Override

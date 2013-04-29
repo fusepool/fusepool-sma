@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?><metatype:MetaData xmlns:metatype="http://www.osgi.org/xmlns/metatype/v1.0.0" localization="OSGI-INF/metatype/metatype">
     <OCD id="eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine" name="%eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine.description">
         <AD id="stanbol.enhancer.engine.name" type="String" name="%stanbol.enhancer.engine.name.name" description="%stanbol.enhancer.engine.name.description"/>
-        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.name" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.name.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.name.description"/>
         <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.description" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.description.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.description.description"/>
+        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.graphURI" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.graphURI.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.graphURI.description"/>
+        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.labelField" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.labelField.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.labelField.description"/>
+        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.URIField" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.URIField.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.URIField.description"/>
+        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes.description" cardinality="20"/>
+        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.type" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.type.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.type.description"/>
         <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage" type="String" default="None" name="%eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage.description">
             <Option value="None" label="None"/>
             <Option value="Danish" label="Danish"/>
@@ -24,8 +28,6 @@
         <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive" type="Boolean" default="false" name="%eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive.description"/>
         <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength" type="Integer" default="3" name="%eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength.description"/>
         <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping" type="Boolean" default="false" name="%eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping.description"/>
-        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.type" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.type.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.type.description"/>
-        <AD id="eu.fusepool.enhancer.engines.dictionaryannotator.path" type="String" name="%eu.fusepool.enhancer.engines.dictionaryannotator.path.name" description="%eu.fusepool.enhancer.engines.dictionaryannotator.path.description"/>
     </OCD>
     <Designate pid="eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine" factoryPid="eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine">
         <Object ocdref="eu.fusepool.enhancer.engines.dictionaryannotator.DictionaryAnnotatorEnhancerEngine"/>

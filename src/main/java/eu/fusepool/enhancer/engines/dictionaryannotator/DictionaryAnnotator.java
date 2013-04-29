@@ -7,6 +7,7 @@ package eu.fusepool.enhancer.engines.dictionaryannotator;
 import edu.stanford.nlp.ling.CoreLabel;
 import edu.stanford.nlp.process.CoreLabelTokenFactory;
 import edu.stanford.nlp.process.PTBTokenizer;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.arabidopsis.ahocorasick.SearchResult;
 import org.arabidopsis.ahocorasick.AhoCorasick;
@@ -26,6 +28,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /**
  *
@@ -39,7 +42,6 @@ public class DictionaryAnnotator {
     private Dictionary processedDictionary;
     private List<Entity> entities;
     private AhoCorasick tree;
-    private InputStream dictionaryStream;
     private boolean caseSensitive;
     private int caseSensitiveLength;
     private boolean eliminateOverlapping;
@@ -56,7 +58,6 @@ public class DictionaryAnnotator {
         System.err.print("Loading dictionary and creating search trie ...");
         start = System.currentTimeMillis();
         
-        dictionaryStream = _dictionaryStream;
         stemmingLanguage = _stemmingLanguage;
         caseSensitive = _caseSensitive;
         caseSensitiveLength = _caseSensitiveLength;
@@ -101,7 +102,7 @@ public class DictionaryAnnotator {
             }
         }
         
-        String[] terms = ReadDictionary();
+        String[] terms = ReadDictionary(_dictionaryStream);
         tokenizedTerms = TokenizeTerms(terms);
         
         if(stemming) {
@@ -148,48 +149,51 @@ public class DictionaryAnnotator {
         return entitiesToReturn;
     }
     
-    private String[] ReadDictionary() {
+    private String[] ReadDictionary(InputStream input) {
         try {
             List<String> list = new ArrayList<String>(); 
             DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
             DocumentBuilder db = dbf.newDocumentBuilder();
-            Document doc = db.parse(dictionaryStream);
+            //Document doc = db.parse("resultSparql.xml");
+            Document doc = db.parse(input);
             doc.getDocumentElement().normalize();
-            NodeList nodeLst = doc.getElementsByTagName("ROW");
-
-            Element fstElmnt;
-            NodeList fstNmElmntLst;
-            Element fstNmElmnt;
-            NodeList fstNm;
+            
+            NodeList mainList = doc.getElementsByTagName("result");
+            Element currentElement;
+            NodeList currentNodeChildren;
+            NodeList currentNodeChildrenChildren;
+            
             String name, uri;
                     
-            for (int s = 0; s < nodeLst.getLength(); s++) {
-                Node fstNode = nodeLst.item(s);
+            for (int s = 0; s < mainList.getLength(); s++) {
+                Node currentNode = mainList.item(s);
                 
-                if (fstNode.getNodeType() == Node.ELEMENT_NODE) {
+                if (currentNode.getNodeType() == Node.ELEMENT_NODE) {
+                    currentElement = (Element) currentNode;
+                    currentNodeChildren = currentElement.getElementsByTagName("binding");
 
-                    fstElmnt = (Element) fstNode;
+                    currentNodeChildrenChildren = currentNodeChildren.item(0).getChildNodes();
+                    name = currentNodeChildrenChildren.item(1).getTextContent();
+                    
+                    currentNodeChildrenChildren = currentNodeChildren.item(1).getChildNodes();
+                    uri = currentNodeChildrenChildren.item(1).getTextContent();
 
-                    fstNmElmntLst = fstElmnt.getElementsByTagName("name");
-                    fstNmElmnt = (Element) fstNmElmntLst.item(0);
-                    fstNm = fstNmElmnt.getChildNodes();
-
-                    name = ((Node) fstNm.item(0)).getNodeValue();
-
-                    fstNmElmntLst = fstElmnt.getElementsByTagName("uri");
-                    fstNmElmnt = (Element) fstNmElmntLst.item(0);
-                    fstNm = fstNmElmnt.getChildNodes();
-
-                    uri = ((Node) fstNm.item(0)).getNodeValue();
-
+                    //System.out.println(name + " + " + uri); 
                     originalDictionary.AddElement(name, new UriRef(uri));
                     list.add(name);
                 }
             }
             
             return list.toArray(new String[list.size()]);
-        } catch (Exception ex) {
-            Logger.getLogger(DictionaryAnnotator.class.getName()).log(Level.SEVERE, null, ex);
+            
+        } catch (SAXException ex) {
+            ex.printStackTrace();
+            return null;
+        } catch (ParserConfigurationException ex) {
+            ex.printStackTrace();
+            return null;
+        } catch (IOException ex) {
+            ex.printStackTrace();
             return null;
         } 
     }

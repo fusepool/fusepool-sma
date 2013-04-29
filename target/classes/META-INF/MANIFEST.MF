@@ -1,12 +1,12 @@
 Manifest-Version: 1.0
 Service-Component: OSGI-INF/serviceComponents.xml
 Export-Package: eu.fusepool.enhancer.engines.dictionaryannotator;uses:
- ="org.apache.clerezza.rdf.core,javax.xml.parsers,org.w3c.dom,org.apac
- he.stanbol.enhancer.servicesapi.rdf,org.apache.clerezza.rdf.core.impl
- ,org.slf4j,org.osgi.service.component,org.apache.stanbol.enhancer.ser
- vicesapi.helper,org.apache.stanbol.enhancer.servicesapi.impl,org.apac
- he.stanbol.enhancer.servicesapi,org.osgi.service.cm";version="1.0.0.S
- NAPSHOT"
+ ="org.apache.clerezza.rdf.core,javax.xml.parsers,org.w3c.dom,org.xml.
+ sax,org.apache.stanbol.enhancer.servicesapi.rdf,org.apache.clerezza.r
+ df.core.impl,org.slf4j,org.osgi.service.component,org.apache.stanbol.
+ enhancer.servicesapi.helper,org.apache.stanbol.enhancer.servicesapi.i
+ mpl,org.apache.stanbol.enhancer.servicesapi,org.osgi.service.cm";vers
+ ion="1.0.0.SNAPSHOT"
 Bundle-ClassPath: .,nlp-1.2.7.jar
 Built-By: Gabor
 Bundle-Category: Stanbol Enhancer
@@ -16,7 +16,7 @@ Created-By: Apache Maven Bundle Plugin
 Bundle-Vendor: Apache Stanbol
 Build-Jdk: 1.7.0_15
 Bundle-Version: 1.0.0.SNAPSHOT
-Bnd-LastModified: 1365511075303
+Bnd-LastModified: 1367232201709
 Bundle-ManifestVersion: 2
 Bundle-Description: This module is an implementation of a dictionary a
  nnotator.
