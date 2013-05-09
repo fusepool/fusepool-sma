@@ -31,7 +31,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 /**
- *
+ * 
  * @author Gabor
  */
 public class DictionaryAnnotator {
@@ -50,7 +50,14 @@ public class DictionaryAnnotator {
     private Map<String,String> languages;
     
     /**
-     * @param args the command line arguments
+     * Initializes the dictionary annotator by reading the dictionary and building
+     * the search tree which is the soul of the Aho-Corasic algorithm.
+     * 
+     * @param _dictionaryStream
+     * @param _stemmingLanguage
+     * @param _caseSensitive
+     * @param _caseSensitiveLength
+     * @param _eliminateOverlapping 
      */
     public DictionaryAnnotator(InputStream _dictionaryStream, String _stemmingLanguage, boolean _caseSensitive, 
             int _caseSensitiveLength, boolean _eliminateOverlapping) {
@@ -119,6 +126,11 @@ public class DictionaryAnnotator {
         System.err.println(" done [" + Double.toString((double)(end - start)/1000) + " sec] .");
     }
     
+    /**
+     * Processes the input text and returns the found entities.
+     * @param text
+     * @return 
+     */
     public List<Entity> Annotate(String text){
 //        long start = System.currentTimeMillis();
         tokenizedText = TokenizeText(text);
@@ -149,6 +161,11 @@ public class DictionaryAnnotator {
         return entitiesToReturn;
     }
     
+    /**
+     * Reads the dictionary from the input stream.
+     * @param input
+     * @return 
+     */
     private String[] ReadDictionary(InputStream input) {
         try {
             List<String> list = new ArrayList<String>(); 
@@ -198,6 +215,19 @@ public class DictionaryAnnotator {
         } 
     }
 
+    /**
+     * Tokenizes the all the entities in the dictionary and returns the 
+     * tokenized entities. 
+     * If caseSensitive is true and caseSensitiveLength > 0 all tokens 
+     * whose length is equal or bigger than the caseSensitiveLength are 
+     * converted to lowercase.
+     * If caseSensitive is true and caseSensitiveLength = 0 no conversion
+     * is applied.
+     * If caseSensitive is false all tokens are converted to lowercase.
+     * 
+     * @param originalTerms
+     * @return 
+     */
     public List<TokenizedText> TokenizeTerms(String[] originalTerms) {
         StringReader sr;
         PTBTokenizer ptbt;
@@ -302,6 +332,18 @@ public class DictionaryAnnotator {
         return tlist;
     }
     
+    /**
+     * Tokenizes the original text and returns the tokenized text. 
+     * If caseSensitive is true and caseSensitiveLength > 0 all tokens 
+     * whose length is equal or bigger than the caseSensitiveLength are 
+     * converted to lowercase.
+     * If caseSensitive is true and caseSensitiveLength = 0 no conversion
+     * is applied.
+     * If caseSensitive is false all tokens are converted to lowercase.
+     * 
+     * @param text
+     * @return 
+     */
     public TokenizedText TokenizeText(String text) {
         StringReader sr;
         PTBTokenizer ptbt;
@@ -400,11 +442,14 @@ public class DictionaryAnnotator {
         return tokText;
     }
     
+    /**
+     * This function runs the Aho-Corasick string matching algorithm on the 
+     * tokenized (and stemmed) text using the search tree built from the dictionary.
+     * @param tokenizedText 
+     */
     private void FindEntities(TokenizedText tokenizedText){
         entities = new ArrayList<Entity>();
-        
         Entity entity = null;
-        //Set termsThatHit = new HashSet();
         String str = "";
         int length = 0, lastIndex = 0, maxlength = 0;
         for (Iterator iter = tree.search(tokenizedText.text.toCharArray()); iter.hasNext(); ) {
@@ -426,12 +471,19 @@ public class DictionaryAnnotator {
                 
                 entity = tokenizedText.FindMatch((lastIndex - length), lastIndex);
                 //entity.text = str;
-                entity.uri = stemming ? processedDictionary.GetURI(str) : originalDictionary.GetURI(entity.text);
+                entity.uri = stemming ? processedDictionary.GetURI(str) : originalDictionary.GetURI(entity.label);
                 entities.add(entity);
             }
 	}
     }
     
+    /**
+     * Eliminates the overlaps among all the entities found in the text. If 
+     * we have two entities, Entity1 and Entity2, and Entity1 is within the 
+     * boundaries of Entity2, then Entity1 is marked and is later discarded.
+     * If the variable eliminateOverlapping is true, entities whose 
+     * boundaries are overlapping are also marked and are later discarded.
+     */
     public void EliminateOverlapping(){
         Entity e1, e2;
         for (int i = 0; i < entities.size(); i++) {
@@ -475,6 +527,10 @@ public class DictionaryAnnotator {
         }
     }
     
+    /**
+     * The function is responsible for the stemming of each entity in the dictionary
+     * based on the stemming language defined in the constructor.
+     */
     private void StemTerms() {
         try {
             int offset = 0;
@@ -491,7 +547,7 @@ public class DictionaryAnnotator {
                 for (Token token : tokenizedText.tokens) {
                     stemmer.setCurrent(token.text);
                     stemmer.stem();
-                    word = stemmer.getCurrent();   //TODO save stemmed text and new positions
+                    word = stemmer.getCurrent();  
                     
                     offset = token.text.length() - word.length();
                     
@@ -518,6 +574,10 @@ public class DictionaryAnnotator {
         }
     }
     
+    /**
+     * The function is responsible for the stemming of the main text based on
+     * the stemming language defined in the constructor.
+     */
     private void StemText() {
         try {
             int offset = 0;
