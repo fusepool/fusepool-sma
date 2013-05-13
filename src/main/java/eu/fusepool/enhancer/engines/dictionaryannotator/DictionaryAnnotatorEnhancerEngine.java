@@ -167,6 +167,8 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void activate(ComponentContext context) throws ConfigurationException {
         super.activate(context);
+        
+        //Read configuration
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
             
@@ -219,6 +221,7 @@ public class DictionaryAnnotatorEnhancerEngine
             eliminateOverlapping = eo == null || eo.toString().isEmpty() ? null : (Boolean) eo;
         }
 
+        //Concatenating SPARQL query
         String query = "";
         for (String prefix : entityPrefixes) {
             query += "PREFIX " + prefix + "\n";
@@ -254,8 +257,7 @@ public class DictionaryAnnotatorEnhancerEngine
             connection.setDoOutput(true);
 
             //Send request
-            DataOutputStream wr = new DataOutputStream(
-                    connection.getOutputStream());
+            DataOutputStream wr = new DataOutputStream(connection.getOutputStream());
             wr.writeBytes(urlParameters);
             wr.flush();
             wr.close();
@@ -263,6 +265,7 @@ public class DictionaryAnnotatorEnhancerEngine
             //Get Response	
             dictionaryStream = connection.getInputStream();
             
+            //Stream cannot be null
             if(dictionaryStream != null) 
             {
                 annotator = new DictionaryAnnotator(dictionaryStream, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
