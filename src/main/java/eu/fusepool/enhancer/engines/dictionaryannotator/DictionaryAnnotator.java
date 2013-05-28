@@ -178,7 +178,6 @@ public class DictionaryAnnotator {
             NodeList mainList = doc.getElementsByTagName("result");
             Element currentElement;
             NodeList currentNodeChildren;
-            NodeList currentNodeChildrenChildren;
             
             String name, uri;
                     
@@ -189,11 +188,8 @@ public class DictionaryAnnotator {
                     currentElement = (Element) currentNode;
                     currentNodeChildren = currentElement.getElementsByTagName("binding");
 
-                    currentNodeChildrenChildren = currentNodeChildren.item(0).getChildNodes();
-                    name = currentNodeChildrenChildren.item(1).getTextContent();
-                    
-                    currentNodeChildrenChildren = currentNodeChildren.item(1).getChildNodes();
-                    uri = currentNodeChildrenChildren.item(1).getTextContent();
+                    name = currentNodeChildren.item(0).getTextContent();
+                    uri = currentNodeChildren.item(1).getTextContent();
 
                     //System.out.println(name + " + " + uri); 
                     originalDictionary.AddElement(name, new UriRef(uri));

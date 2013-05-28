@@ -238,16 +238,17 @@ public class DictionaryAnnotatorEnhancerEngine
         
         try {
             //Concating request parameters
-            String urlParameters = "graphuri=" + URLEncoder.encode(graphURI, "UTF-8") +
+            String urlParameters = "default-graph-uri=" + URLEncoder.encode(graphURI, "UTF-8") +
                                "&query=" + URLEncoder.encode(query, "UTF-8");
             
             //Create connection
+            String userPassword = new sun.misc.BASE64Encoder().encode("admin:admin".getBytes());
             URL url = new URL(sparqlEndPoint);
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type",
                     "application/x-www-form-urlencoded");
-
+            connection.setRequestProperty("Authorization", "Basic " + userPassword);
             connection.setRequestProperty("Content-Length", ""
                     + Integer.toString(urlParameters.getBytes().length));
             connection.setRequestProperty("Content-Language", "en-US");
