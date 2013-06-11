@@ -12,7 +12,7 @@
     
     <groupId>eu.fusepool</groupId>
     <artifactId>enhancer.engines.dictionaryannotator</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.1-SNAPSHOT</version>
     <packaging>bundle</packaging>
 
     <name>Fusepool Dictionary Annotator Enhancer Engine</name>
@@ -28,7 +28,6 @@
     <build>
         <plugins>
             <plugin>
-                <version>1.7.4</version>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-scr-plugin</artifactId>
                 <executions>
@@ -43,16 +42,12 @@
             <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
-                <version>2.2.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
                         <Export-Package>
                             eu.fusepool.enhancer.engines.dictionaryannotator;version=${project.version}
                         </Export-Package>
-                        <Embed-Dependency>
-                            nlp;scope=compile
-                        </Embed-Dependency>
                     </instructions>
                 </configuration>
             </plugin>
@@ -65,11 +60,6 @@
             <artifactId>org.osgi.core</artifactId>
             <version>1.4.0</version>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>edu.stanford</groupId>
-            <artifactId>nlp</artifactId>
-            <version>1.2.7</version>
         </dependency>
         <dependency>
             <groupId>org.apache.stanbol</groupId>

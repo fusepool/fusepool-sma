@@ -19,7 +19,7 @@ public class Entity {
     UriRef uri;
     int begin;
     int end;
-    float weight;
+    double score;
     boolean overlap;
     List<Token> tokens;
     
@@ -28,7 +28,7 @@ public class Entity {
      */
     public Entity() {
         tokens = new ArrayList<Token>();
-        weight = 1;
+        score = 1;
     }
     
     /**
