@@ -68,7 +68,7 @@ import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_EN
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_TYPE;
 
 @Component(configurationFactory = true, 
-    policy = ConfigurationPolicy.REQUIRE,
+    policy = ConfigurationPolicy.OPTIONAL,
     metatype = true, immediate = true, inherit = true)
 @Service
 @Properties(value = {
