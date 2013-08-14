@@ -15,25 +15,21 @@
  */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
-import java.io.DataOutputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
+import org.apache.clerezza.rdf.core.Graph;
+import org.apache.clerezza.rdf.core.Literal;
 import org.apache.clerezza.rdf.core.LiteralFactory;
 import org.apache.clerezza.rdf.core.MGraph;
+import org.apache.clerezza.rdf.core.Resource;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.apache.clerezza.rdf.core.impl.PlainLiteralImpl;
 import org.apache.clerezza.rdf.core.impl.TripleImpl;
@@ -45,6 +41,16 @@ import org.apache.felix.scr.annotations.Properties;
 import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.PropertyOption;
 import org.apache.felix.scr.annotations.Service;
+import org.apache.clerezza.rdf.core.TypedLiteral;
+import org.apache.clerezza.rdf.core.UriRef;
+import org.apache.clerezza.rdf.core.access.LockableMGraph;
+import org.apache.clerezza.rdf.core.access.NoSuchEntityException;
+import org.apache.clerezza.rdf.core.access.TcManager;
+import org.apache.clerezza.rdf.core.sparql.ParseException;
+import org.apache.clerezza.rdf.core.sparql.QueryParser;
+import org.apache.clerezza.rdf.core.sparql.ResultSet;
+import org.apache.clerezza.rdf.core.sparql.SolutionMapping;
+import org.apache.clerezza.rdf.core.sparql.query.SelectQuery;
 import org.apache.stanbol.enhancer.servicesapi.Blob;
 import org.apache.stanbol.enhancer.servicesapi.ContentItem;
 import org.apache.stanbol.enhancer.servicesapi.EngineException;
@@ -59,6 +65,7 @@ import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.osgi.framework.Constants;
 
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_REFERENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_CONFIDENCE;
@@ -77,25 +84,47 @@ import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_EN
 public class DictionaryAnnotatorEnhancerEngine
         extends AbstractEnhancementEngine<RuntimeException,RuntimeException>
         implements EnhancementEngine, ServiceProperties {
-
+    
+    /**
+     * Description of the current dictionary. (Optional)
+     */
     @Property
     public static final String DESCRIPTION = "eu.fusepool.enhancer.engines.dictionaryannotator.description";
-    
+    /**
+     * The Unique Resource Identifier of the graph used to query the dictionary from.
+     */
     @Property
     public static final String GRAPH_URI = "eu.fusepool.enhancer.engines.dictionaryannotator.graphURI";
-    
+    /**
+     * The name that identifies the label field inside the graph. (The label of the entities.)
+     */
     @Property
     public static final String LABEL_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.labelField";
-    
+    /**
+     * The name that identifies the URI field inside the graph. (The URI of the entities.)
+     */
     @Property
     public static final String URI_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.URIField";   
-    
+    /**
+     * The prefixes that are needed for the SPARQL query.
+     */
     @Property(cardinality = 20)
     public static final String ENTITY_PREFIXES = "eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes";  
-    
+    /**
+     * The type of the dictionary (e.g. DISEASE, ELEMENT, MOBILE). This value is optional but it
+     * shows up in the output.
+     */
     @Property
     public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
-    
+    /**
+     * The available languages for stemming. Stemming should only be used when working with dictionaries which
+     * contain simple words and expressions. It's not useful in case of unique real-world entities such as persons, 
+     * locations, names of companies or technologies where there are no inflections used.
+     * 
+     * (Note: Stemming is done by an opensource Java based stemmer called Snowball. Snowball is a small 
+     * string processing language designed for creating stemming algorithms for use in information retrieval. 
+     * It works well with plural forms and basic inflections. More on Snowball: http://snowball.tartarus.org/)
+     */
     @Property(options={
         @PropertyOption(value="None",name="None"),
         @PropertyOption(value="Danish",name="Danish"),
@@ -115,16 +144,23 @@ public class DictionaryAnnotatorEnhancerEngine
         @PropertyOption(value="Turkish",name="Turkish")
         },value="None")
     public static final String STEMMING_LANGUAGE = "eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage";
-    
+    /**
+     * If set the annotator will differentiate uppercase and lowercase characters. (e.g. Word != word)
+     */
     @Property(boolValue=false)
     public static final String CASE_SENSITIVE = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive";
-
+    /**
+     * If value is greater than 0, case sensitivity will only affect tokens shorter or equally long to this value.
+     * It can be useful when working with abbreviations. Abbreviations are usually 2 to 4 character long.
+     * (Works only if Case Sensitivity is allowed.)
+     */
     @Property(intValue=3)
     public static final String CASE_SENSITIVE_LENGTH = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength";
-    
+    /**
+     * If set the annotator will eliminate overlapping matches, choosing the first entity as a result (in order of appearance).
+     */
     @Property(boolValue=false)
     public static final String ELIMINATE_OVERLAPS = "eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping";
-    
     /**
      * Default value for the {@link Constants#SERVICE_RANKING} used by this engine.
      * This is a negative value to allow easy replacement by this engine depending
@@ -152,6 +188,7 @@ public class DictionaryAnnotatorEnhancerEngine
     private static final Logger log = LoggerFactory.getLogger(DictionaryAnnotatorEnhancerEngine.class);
     
     private DictionaryAnnotator annotator;
+    private DictionaryStore dictionary;
     private String description;
     private String graphURI;
     private String labelField;
@@ -167,7 +204,7 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void activate(ComponentContext context) throws ConfigurationException {
         super.activate(context);
-        
+        System.out.println("--- Activate SMA ---");
         //Read configuration
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
@@ -222,73 +259,65 @@ public class DictionaryAnnotatorEnhancerEngine
         }
 
         //Concatenating SPARQL query
-        String query = "";
+        String sparqlQuery = "";
         for (String prefix : entityPrefixes) {
-            query += "PREFIX " + prefix + "\n";
+            sparqlQuery += "PREFIX " + prefix + "\n";
         }
-        query += "SELECT distinct ?uri ?label WHERE { "
-                + "?uri a " + URIField + " ."
+        sparqlQuery += "SELECT distinct ?uri ?label WHERE { "
+                + "?uri a " + URIField + " ."   
                 + "?uri " + labelField + " ?label ."
                 + " }";
-        
-        String sparqlEndPoint = "http://localhost:8080/sparql";
 
-        HttpURLConnection connection = null;
-        InputStream dictionaryStream = null;
-        
         try {
-            //Concating request parameters
-            String urlParameters = "default-graph-uri=" + URLEncoder.encode(graphURI, "UTF-8") +
-                               "&query=" + URLEncoder.encode(query, "UTF-8");
-            
-            //Create connection
-            String userPassword = new sun.misc.BASE64Encoder().encode("admin:admin".getBytes());
-            URL url = new URL(sparqlEndPoint);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Content-Type",
-                    "application/x-www-form-urlencoded");
-            connection.setRequestProperty("Authorization", "Basic " + userPassword);
-            connection.setRequestProperty("Content-Length", ""
-                    + Integer.toString(urlParameters.getBytes().length));
-            connection.setRequestProperty("Content-Language", "en-US");
-
-            connection.setUseCaches(false);
-            connection.setDoInput(true);
-            connection.setDoOutput(true);
-
-            //Send request
-            DataOutputStream wr = new DataOutputStream(connection.getOutputStream());
-            wr.writeBytes(urlParameters);
-            wr.flush();
-            wr.close();
-
-            //Get Response	
-            dictionaryStream = connection.getInputStream();
-            
-            //Stream cannot be null
-            if(dictionaryStream != null) 
-            {
-                annotator = new DictionaryAnnotator(dictionaryStream, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
+            //Get TcManager
+            TcManager tcManager = TcManager.getInstance();
+            System.out.println("--- 1 ---");
+            //Get the graph by its URI
+            LockableMGraph graph = null;
+            try {
+                graph = tcManager.getMGraph(new UriRef(graphURI));
+            } catch (NoSuchEntityException e) {
+                log.error("Enhancement Graph must be existing", e);
             }
-            else
-            {
-                log.error("Dictionary cannot be NULL");
+            System.out.println("--- 2 ---");
+            //Parse the SPARQL query
+            SelectQuery selectQuery = null;
+            try {
+                selectQuery = (SelectQuery) QueryParser.getInstance().parse(sparqlQuery);
+            } catch (ParseException e) {
+                log.error("Cannot parse the SPARQL query", e);
             }
-        } catch (IOException e) {
-            log.error("Error occurred while querying the entityhub", e);
-            e.printStackTrace();
-        } finally {
-            if (dictionaryStream != null) {
-                try {
-                    dictionaryStream.close();
-                } catch (IOException ex) {
-                    log.error("Unable to close inputstream", ex);
+            System.out.println("--- 3 ---");
+            System.out.println(graph == null ? "null" : graph.size());
+            if (graph != null) {
+                System.out.println("--- 4 ---");
+                Lock l = graph.getLock().readLock();
+                try{
+                    //Execute the SPARQL query
+                    ResultSet resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
+                    dictionary = new DictionaryStore();System.out.println("--- 5 ---");
+                    while (resultSet.hasNext()) {
+                        SolutionMapping mapping = resultSet.next();
+                        try{
+                            TypedLiteral label = (TypedLiteral) mapping.get("label");
+                            UriRef uri = (UriRef) mapping.get("uri");
+                            dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                            //System.out.println(label == null ? "" : "label: " + label.getLexicalForm());
+                            //System.out.println(uri == null ? "" : "uri: " + uri.getUnicodeString());
+                        }catch(Exception e){
+                            System.out.println(e.getMessage());
+                        }
+                    }
+                    System.out.println("DICTCOUNT: " + dictionary.keywords.size());
+                    annotator = new DictionaryAnnotator(dictionary, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
+                } finally {
+                    l.unlock();
                 }
+            } else {
+                log.error("There is no registered graph with given uri: " + graphURI);
             }
-            if (connection != null) {
-                connection.disconnect();
-            }
+        } finally {
+
         }
     }
 
@@ -349,6 +378,7 @@ public class DictionaryAnnotatorEnhancerEngine
                     g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_LABEL, new PlainLiteralImpl(e.label)));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_START, new PlainLiteralImpl(Integer.toString(e.begin))));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_END, new PlainLiteralImpl(Integer.toString(e.end))));
+                    System.out.println(e.toString());
                 }
             } finally {
                 ci.getLock().writeLock().unlock();

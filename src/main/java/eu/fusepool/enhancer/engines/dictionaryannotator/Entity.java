@@ -116,9 +116,9 @@ public class Entity {
             label = "";
         }
     }
-    
+
     @Override
     public String toString() {
-        return "text\t-->\t\"" + label + "\"\nbegin\t-->\t" + begin + "\nend\t-->\t" + end;
+        return "Entity{" + "label=\"" + label + "\", uri=" + uri + ", begin=" + begin + ", end=" + end + '}';
     }
 }

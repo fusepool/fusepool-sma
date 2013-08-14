@@ -4,8 +4,12 @@
  */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.clerezza.rdf.core.UriRef;
 
 /**
@@ -14,14 +18,14 @@ import org.apache.clerezza.rdf.core.UriRef;
  * 
  * @author Gabor
  */
-public class Dictionary {
+public class DictionaryStore {
     //HashMap representation of the keywords and matching URIs
     Map<String, UriRef> keywords;
     
     /**
      * Simple constructor.
      */
-    public Dictionary() {
+    public DictionaryStore() {
         keywords = new HashMap<String, UriRef>();
     }
     
@@ -30,6 +34,13 @@ public class Dictionary {
      */
     public void AddElement(String text, UriRef uri){
         keywords.put(text.toLowerCase(), uri);
+    }
+    
+    /**
+     * Add new element to the dictionary without any change.
+     */
+    public void AddOriginalElement(String text, UriRef uri){
+        keywords.put(text, uri);
     }
     
     /**

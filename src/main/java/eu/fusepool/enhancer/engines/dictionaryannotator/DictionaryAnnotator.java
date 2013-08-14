@@ -15,20 +15,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.arabidopsis.ahocorasick.SearchResult;
 import org.arabidopsis.ahocorasick.AhoCorasick;
 import org.tartarus.snowball.SnowballStemmer;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
 
 /**
  * 
@@ -38,8 +31,8 @@ public class DictionaryAnnotator {
     
     private TokenizedText tokenizedText;
     private List<TokenizedText> tokenizedTerms;
-    private Dictionary originalDictionary;
-    private Dictionary processedDictionary;
+    private DictionaryStore originalDictionary;
+    private DictionaryStore processedDictionary;
     private List<Entity> entities;
     private AhoCorasick tree;
     private boolean caseSensitive;
@@ -59,7 +52,7 @@ public class DictionaryAnnotator {
      * @param _caseSensitiveLength
      * @param _eliminateOverlapping 
      */
-    public DictionaryAnnotator(InputStream _dictionaryStream, String _stemmingLanguage, boolean _caseSensitive, 
+    public DictionaryAnnotator(DictionaryStore _dictionary, String _stemmingLanguage, boolean _caseSensitive, 
             int _caseSensitiveLength, boolean _eliminateOverlapping) {
         long start, end;
         System.err.print("Loading dictionary and creating search trie ...");
@@ -98,8 +91,8 @@ public class DictionaryAnnotator {
         languages.put("Swedish", "swedish");
         languages.put("Turkish", "turkish");
         
-        originalDictionary = new Dictionary();
-        processedDictionary = new Dictionary();
+        originalDictionary = new DictionaryStore();
+        processedDictionary = new DictionaryStore();
         
         stemming = false;
         if(stemmingLanguage != null){
@@ -109,7 +102,7 @@ public class DictionaryAnnotator {
             }
         }
         
-        String[] terms = ReadDictionary(_dictionaryStream);
+        String[] terms = ReadDictionary(_dictionary.keywords);
         tokenizedTerms = TokenizeTerms(terms);
         
         if(stemming) {
@@ -166,49 +159,23 @@ public class DictionaryAnnotator {
      * @param input
      * @return 
      */
-    private String[] ReadDictionary(InputStream input) {
-        try {
-            List<String> list = new ArrayList<String>(); 
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-            DocumentBuilder db = dbf.newDocumentBuilder();
-            //Document doc = db.parse("resultSparql.xml");
-            Document doc = db.parse(input);
-            doc.getDocumentElement().normalize();
-            
-            NodeList mainList = doc.getElementsByTagName("result");
-            Element currentElement;
-            NodeList currentNodeChildren;
-            
-            String name, uri;
-                    
-            for (int s = 0; s < mainList.getLength(); s++) {
-                Node currentNode = mainList.item(s);
-                
-                if (currentNode.getNodeType() == Node.ELEMENT_NODE) {
-                    currentElement = (Element) currentNode;
-                    currentNodeChildren = currentElement.getElementsByTagName("binding");
-
-                    name = currentNodeChildren.item(0).getTextContent();
-                    uri = currentNodeChildren.item(1).getTextContent();
-
-                    //System.out.println(name + " + " + uri); 
-                    originalDictionary.AddElement(name, new UriRef(uri));
-                    list.add(name);
-                }
-            }
-            
-            return list.toArray(new String[list.size()]);
-            
-        } catch (SAXException ex) {
-            ex.printStackTrace();
-            return null;
-        } catch (ParserConfigurationException ex) {
-            ex.printStackTrace();
-            return null;
-        } catch (IOException ex) {
-            ex.printStackTrace();
-            return null;
-        } 
+    private String[] ReadDictionary(Map<String,UriRef> dictionary) {
+        String[] entities = new String[dictionary.size()];
+        Set set = dictionary.entrySet();
+        Iterator iterator = set.iterator();
+        
+        int index = 0;
+        String label;
+        UriRef uri;
+        while(iterator.hasNext()){
+            Map.Entry me = (Map.Entry)iterator.next();
+            label = (String) me.getKey();
+            uri = (UriRef) me.getValue();
+            entities[index] = label;
+            originalDictionary.AddElement(label, uri);       
+            index++;
+        }         
+        return entities;
     }
 
     /**
