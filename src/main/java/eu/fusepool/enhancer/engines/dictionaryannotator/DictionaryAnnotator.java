@@ -7,8 +7,6 @@ package eu.fusepool.enhancer.engines.dictionaryannotator;
 import edu.stanford.nlp.ling.CoreLabel;
 import edu.stanford.nlp.process.CoreLabelTokenFactory;
 import edu.stanford.nlp.process.PTBTokenizer;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,8 +14,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.arabidopsis.ahocorasick.SearchResult;
 import org.arabidopsis.ahocorasick.AhoCorasick;
@@ -46,7 +42,7 @@ public class DictionaryAnnotator {
      * Initializes the dictionary annotator by reading the dictionary and building
      * the search tree which is the soul of the Aho-Corasic algorithm.
      * 
-     * @param _dictionaryStream
+     * @param _dictionary
      * @param _stemmingLanguage
      * @param _caseSensitive
      * @param _caseSensitiveLength
@@ -54,9 +50,6 @@ public class DictionaryAnnotator {
      */
     public DictionaryAnnotator(DictionaryStore _dictionary, String _stemmingLanguage, boolean _caseSensitive, 
             int _caseSensitiveLength, boolean _eliminateOverlapping) {
-        long start, end;
-        System.err.print("Loading dictionary and creating search trie ...");
-        start = System.currentTimeMillis();
         
         stemmingLanguage = _stemmingLanguage;
         caseSensitive = _caseSensitive;
@@ -114,9 +107,6 @@ public class DictionaryAnnotator {
             tree.add(e.text, e.text);
 	}
 	tree.prepare();
-        
-        end = System.currentTimeMillis();
-        System.err.println(" done [" + Double.toString((double)(end - start)/1000) + " sec] .");
     }
     
     /**
