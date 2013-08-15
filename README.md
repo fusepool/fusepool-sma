@@ -7,7 +7,7 @@ This project is an implementation of a dictionary-matching algorithm as an enhan
 
 Fusepool SMA is a pure Java based Apache Stanbol enhancement engine, it is based on the Aho-Corasick string matching algorithm. It was created as an alternative solution for entity extraction, because it is much more flexible than any model-based NER solution. The Aho-Corasic string matching algorithm is a dictionary-matching algorithm that locates elements of a finite set of words and expressions which is called the dictionary, within the input text.
 
-##Stanbol Enhancement Engine
+###Stanbol Enhancement Engine
 
 The outcome of this project is an OSGi bundle (enhancement engine) for Apache Stanbol that takes plain, unstructured text as input and gives RDF triples as output that contains the extracted entities and additional information on the enhancement.
 
