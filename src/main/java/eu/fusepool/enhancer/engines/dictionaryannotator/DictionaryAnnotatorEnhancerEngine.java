@@ -305,7 +305,7 @@ public class DictionaryAnnotatorEnhancerEngine
 
     @Override
     public int canEnhance(ContentItem ci) throws EngineException {
-        return ENHANCE_SYNCHRONOUS;
+        return ENHANCE_ASYNC; //ENHANCE_SYNCHRONOUS
     }
 
     @Override
