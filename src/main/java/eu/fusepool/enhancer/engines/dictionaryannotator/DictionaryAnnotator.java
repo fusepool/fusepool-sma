@@ -225,7 +225,7 @@ public class DictionaryAnnotator {
 
                         tokText.addToken(t);
 
-                        sb.append(label.word().toString());
+                        sb.append(word);
                         sb.append(" ");
                     }
                 }
@@ -248,7 +248,7 @@ public class DictionaryAnnotator {
 
                         tokText.addToken(t);
 
-                        sb.append(label.word().toString());
+                        sb.append(word);
                         sb.append(" ");
                     }
                 }
@@ -273,7 +273,7 @@ public class DictionaryAnnotator {
 
                     tokText.addToken(t);
 
-                    sb.append(label.word().toString());
+                    sb.append(word);
                     sb.append(" ");
                 }
             }
