@@ -20,11 +20,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
+import org.apache.clerezza.rdf.core.Language;
 import org.apache.clerezza.rdf.core.LiteralFactory;
 import org.apache.clerezza.rdf.core.MGraph;
 import org.apache.clerezza.rdf.core.TypedLiteral;
@@ -57,11 +59,13 @@ import org.apache.stanbol.enhancer.servicesapi.ServiceProperties;
 import org.apache.stanbol.enhancer.servicesapi.helper.ContentItemHelper;
 import org.apache.stanbol.enhancer.servicesapi.helper.EnhancementEngineHelper;
 import org.apache.stanbol.enhancer.servicesapi.impl.AbstractEnhancementEngine;
+import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_SELECTED_TEXT;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_REFERENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_CONFIDENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_END;
@@ -69,6 +73,7 @@ import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ST
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_LABEL;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_TYPE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_TYPE;
+import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_RELATION;
 
 @Component(configurationFactory = true, 
     policy = ConfigurationPolicy.OPTIONAL,
@@ -172,7 +177,7 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void activate(ComponentContext context) throws ConfigurationException {
         super.activate(context);
-        
+      
         //Read configuration
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
@@ -252,6 +257,9 @@ public class DictionaryAnnotatorEnhancerEngine
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
             }
+            
+            ContentGraphProvider graphProvider = new ContentGraphProvider();
+            graphProvider.addTemporaryAdditionGraph(new UriRef(graphURI));
 
             //Parse the SPARQL query
             SelectQuery selectQuery = null;
@@ -329,7 +337,7 @@ public class DictionaryAnnotatorEnhancerEngine
                     contentPart.getKey(), ci.getUri());
             return;
         }
-
+        
         List<Entity> entities = null;
         try {
             entities = annotator.Annotate(text);
@@ -345,16 +353,37 @@ public class DictionaryAnnotatorEnhancerEngine
             MGraph g = ci.getMetadata();
             ci.getLock().writeLock().lock();
             try {
+                Language language = new Language("en");
+//                Map<String,UriRef> previousAnnotations = new LinkedHashMap<String,UriRef>();
+//                UriRef firstOccurrenceAnnotation = null;
+                
                 for (Entity e : entities) {
                     UriRef textEnhancement = EnhancementEngineHelper.createTextEnhancement(ci, this);
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_REFERENCE, e.uri));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_CONFIDENCE, literalFactory.createTypedLiteral(e.score)));
                     g.add(new TripleImpl(textEnhancement, DC_TYPE, typeURI));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_TYPE, new PlainLiteralImpl(type))); 
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_LABEL, new PlainLiteralImpl(e.label)));
+                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_LABEL, new PlainLiteralImpl(e.label,language)));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_START, new PlainLiteralImpl(Integer.toString(e.begin))));
                     g.add(new TripleImpl(textEnhancement, ENHANCER_END, new PlainLiteralImpl(Integer.toString(e.end))));
-                    //System.out.println(e.toString());
+                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_REFERENCE, e.uri));
+                    g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDF.type, typeURI));
+                    g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDFS.label, new PlainLiteralImpl(e.label,language)));   
+                    
+//                    if (firstOccurrenceAnnotation == null) {
+//                        for (Map.Entry<String,UriRef> entry : previousAnnotations.entrySet()) {
+//                            if (entry.getKey().contains(e.label)) {
+//                                firstOccurrenceAnnotation = entry.getValue();
+//                                g.add(new TripleImpl(textEnhancement, DC_RELATION, firstOccurrenceAnnotation));
+//                                break;
+//                            }
+//                        }
+//                        if (firstOccurrenceAnnotation == null) {
+//                            firstOccurrenceAnnotation = textEnhancement;
+//                            previousAnnotations.put(e.label, textEnhancement);
+//                        }
+//                    } else {
+//                        g.add(new TripleImpl(textEnhancement, DC_RELATION, firstOccurrenceAnnotation));
+//                    }
                 }
             } finally {
                 ci.getLock().writeLock().unlock();
