@@ -1,0 +1,14 @@
+   =========================================================================
+   ==  Example NOTICE file for use with the Apache License, Version 2.0,  ==
+   ==  in this case for the Apache httpd-2.0 distribution.                ==
+   =========================================================================
+
+   Apache HTTP Server
+   Copyright 1999-2006 The Apache Software Foundation
+
+   This product includes software developed at
+   The Apache Software Foundation (http://www.apache.org/).
+   
+   This software contains code from the Aho-Corasick Algorithm,
+   the original software is available from
+		https://github.com/raymanrt/aho-corasick
