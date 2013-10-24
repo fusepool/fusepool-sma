@@ -16,16 +16,22 @@
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
-import java.util.logging.Level;
+import org.w3c.dom.Element;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import org.apache.clerezza.platform.Constants;
+import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
 import org.apache.clerezza.rdf.core.Language;
 import org.apache.clerezza.rdf.core.LiteralFactory;
 import org.apache.clerezza.rdf.core.MGraph;
@@ -48,6 +54,7 @@ import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Properties;
 import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.PropertyOption;
+import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.stanbol.enhancer.servicesapi.Blob;
 import org.apache.stanbol.enhancer.servicesapi.ContentItem;
@@ -59,13 +66,11 @@ import org.apache.stanbol.enhancer.servicesapi.ServiceProperties;
 import org.apache.stanbol.enhancer.servicesapi.helper.ContentItemHelper;
 import org.apache.stanbol.enhancer.servicesapi.helper.EnhancementEngineHelper;
 import org.apache.stanbol.enhancer.servicesapi.impl.AbstractEnhancementEngine;
-import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_SELECTED_TEXT;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_REFERENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_CONFIDENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_END;
@@ -73,7 +78,13 @@ import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ST
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_LABEL;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_TYPE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_TYPE;
-import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_RELATION;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.ls.DOMImplementationLS;
+import org.w3c.dom.ls.LSSerializer;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 @Component(configurationFactory = true, 
     policy = ConfigurationPolicy.OPTIONAL,
@@ -86,6 +97,9 @@ public class DictionaryAnnotatorEnhancerEngine
         extends AbstractEnhancementEngine<RuntimeException,RuntimeException>
         implements EnhancementEngine, ServiceProperties {
 
+    @Reference
+    ContentGraphProvider cgp;
+    
     @Property
     public static final String DESCRIPTION = "eu.fusepool.enhancer.engines.dictionaryannotator.description";
     
@@ -96,10 +110,13 @@ public class DictionaryAnnotatorEnhancerEngine
     public static final String LABEL_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.labelField";
     
     @Property
-    public static final String URI_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.URIField";   
+    public static final String URI_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.URIField";    
     
-    @Property(cardinality = 20)
+    @Property(cardinality = 10)
     public static final String ENTITY_PREFIXES = "eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes";  
+    
+    @Property(cardinality = 10)
+    public static final String RDF_FIELDS = "eu.fusepool.enhancer.engines.dictionaryannotator.rdfFields"; 
     
     @Property
     public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
@@ -146,14 +163,17 @@ public class DictionaryAnnotatorEnhancerEngine
     public static final Integer defaultOrder = ORDERING_EXTRACTION_ENHANCEMENT;
     
     /**
-     * This contains the only MIME type directly supported by this enhancement
-     * engine.
+     * This contains the MIME type text/plain.
      */
     private static final String TEXT_PLAIN_MIMETYPE = "text/plain";
     /**
+     * This contains the MIME type application/rdf+xml.
+     */
+    private static final String RDF_XML_MIMETYPE = "application/rdf+xml";
+    /**
      * Set containing the only supported mime type {@link #TEXT_PLAIN_MIMETYPE}
      */
-    private static final Set<String> SUPPORTED_MIMTYPES = Collections.singleton(TEXT_PLAIN_MIMETYPE);
+    private static Set<String> SUPPORTED_MIMTYPES;
     /**
      * This contains the logger.
      */
@@ -165,6 +185,7 @@ public class DictionaryAnnotatorEnhancerEngine
     private String graphURI;
     private String labelField;
     private String URIField;
+    private List<String> rdfFields;
     private String type;
     private UriRef typeURI;
     private List<String> entityPrefixes;
@@ -177,7 +198,11 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void activate(ComponentContext context) throws ConfigurationException {
         super.activate(context);
-      
+
+        SUPPORTED_MIMTYPES = new HashSet();
+        SUPPORTED_MIMTYPES.add(TEXT_PLAIN_MIMETYPE);
+        SUPPORTED_MIMTYPES.add(RDF_XML_MIMETYPE);
+        
         //Read configuration
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
@@ -214,6 +239,31 @@ public class DictionaryAnnotatorEnhancerEngine
             } else {
                 entityPrefixes = null;
             }
+
+            Object rf = config.get(RDF_FIELDS);         
+            if (rf instanceof Iterable<?>) {
+                System.out.println("a");
+                rdfFields = new ArrayList<String>();
+                for (Object o : (Iterable<Object>) rf) {
+                    if (o != null && !o.toString().isEmpty()) {
+                        rdfFields.add(o.toString());
+                    } else {
+                        log.warn("Entity prefixes configuration '{}' contained illegal value '{}' -> removed", rf, o);
+                    }
+                }
+            } else if (rf.getClass().isArray()) {
+                rdfFields = new ArrayList<String>();
+                for (Object modelObj : (Object[]) rf) {
+                    if (modelObj != null) {
+                        rdfFields.add(modelObj.toString());
+                    } else {
+                        log.warn("Entity prefixes configuration '{}' contained illegal value '{}' -> removed",
+                                Arrays.toString((Object[]) rf), rf);
+                    }
+                }
+            } else {
+                rdfFields = null;
+            }
                   
             Object t = config.get(TYPE);        
             if(t != null || !t.toString().isEmpty())
@@ -222,7 +272,7 @@ public class DictionaryAnnotatorEnhancerEngine
                 type = val[0];
                 typeURI = new UriRef(val[1]);
             }
-            
+
             Object sl = config.get(STEMMING_LANGUAGE);
             stemmingLanguage = sl == null ? "None" : sl.toString();
             
@@ -257,9 +307,7 @@ public class DictionaryAnnotatorEnhancerEngine
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
             }
-            
-            ContentGraphProvider graphProvider = new ContentGraphProvider();
-            graphProvider.addTemporaryAdditionGraph(new UriRef(graphURI));
+
 
             //Parse the SPARQL query
             SelectQuery selectQuery = null;
@@ -269,6 +317,8 @@ public class DictionaryAnnotatorEnhancerEngine
                 log.error("Cannot parse the SPARQL query", e);
             }
 
+            cgp.addTemporaryAdditionGraph(new UriRef(graphURI));
+            
             if (graph != null) {
                 Lock l = graph.getLock().readLock();
                 try{
@@ -285,22 +335,24 @@ public class DictionaryAnnotatorEnhancerEngine
                             continue;
                         }
                     }
-                    
+
                     long start, end;
                     start = System.currentTimeMillis();
                     System.err.print("Loading dictionary from " + graphURI + " (" + dictionary.keywords.size() + ") and creating search trie ...");
                     annotator = new DictionaryAnnotator(dictionary, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
                     end = System.currentTimeMillis();
                     System.err.println(" done [" + Double.toString((double)(end - start)/1000) + " sec] .");
-                    
                 } finally {
                     l.unlock();
                 }
             } else {
                 log.error("There is no registered graph with given uri: " + graphURI);
+                System.out.println("There is no registered graph with given uri: " + graphURI);
             }
         } catch(Exception e) {
             log.error("Error happened while creating the dictionary!",e);
+            System.out.println("Error happened while creating the dictionary!");
+            e.printStackTrace();
         }
     }
 
@@ -313,39 +365,85 @@ public class DictionaryAnnotatorEnhancerEngine
 
     @Override
     public int canEnhance(ContentItem ci) throws EngineException {
-        return ENHANCE_ASYNC; //ENHANCE_SYNCHRONOUS
+        return ENHANCE_ASYNC;
     }
 
     @Override
     public void computeEnhancements(ContentItem ci) throws EngineException {
-        Map.Entry<UriRef, Blob> contentPart = ContentItemHelper.getBlob(ci, SUPPORTED_MIMTYPES);
+        Map.Entry<UriRef, Blob> contentPart = null;
+        List<Entity> entities = null;
+        String text = "";
+        List<String> texts = new ArrayList<String>();
+        Document rdf = null;
+        Element rootElement;
+        
+        if(TEXT_PLAIN_MIMETYPE.equals(ci.getMimeType())){
+            contentPart = ContentItemHelper.getBlob(ci, SUPPORTED_MIMTYPES);
+            
+            try {
+                text = ContentItemHelper.getText(contentPart.getValue());
+            } catch (IOException e) {
+                throw new InvalidContentException(this, ci, e);
+            }
+            if (text.trim().length() == 0) {
+                log.info("No text contained in ContentPart {} of ContentItem {}", contentPart.getKey(), ci.getUri());
+                return;
+            }
+
+            try {
+                entities = annotator.Annotate(text);
+                log.info("entities identified: {}", entities);
+            } catch (Exception e) {
+                log.warn("Could not recognize entities", e);
+                return;
+            }
+        }
+        else if(RDF_XML_MIMETYPE.equals(ci.getMimeType())){
+            contentPart = ContentItemHelper.getBlob(ci, SUPPORTED_MIMTYPES);
+
+            try {
+                text = ContentItemHelper.getText(contentPart.getValue());
+                rdf = this.stringToDom(text);
+                rootElement = rdf.getDocumentElement();
+                
+                for (String field : rdfFields) {
+                    List<String> currentText = this.findTag(field, rootElement);
+                    if(currentText != null){
+                        texts.addAll(currentText);
+                    }
+                    else{
+                        log.warn("RDF label '" + field + "' was not found in ContentItem {}",ci.getUri());
+                    }
+                }
+            } catch (Exception e) {
+                throw new InvalidContentException(this, ci, e);
+            }
+
+            try {
+                entities = new ArrayList<Entity>();
+                for (String textItem : texts) {
+                    List<Entity> currentEntities = annotator.Annotate(textItem);
+                    if (currentEntities != null) {
+                        entities.addAll(currentEntities);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not recognize entities", e);
+                e.printStackTrace();
+                return;
+            }
+        }
+        
+        System.out.println(entities.size());
+        
         if (contentPart == null) {
             throw new IllegalStateException("No ContentPart with Mimetype '"
-                    + TEXT_PLAIN_MIMETYPE + "' found for ContentItem " + ci.getUri()
+                    + TEXT_PLAIN_MIMETYPE + "' or '" + RDF_XML_MIMETYPE + "' found for ContentItem " + ci.getUri()
                     + ": This is also checked in the canEnhance method! -> This "
                     + "indicated an Bug in the implementation of the "
                     + "EnhancementJobManager!");
         }
-        String text = "";
-        try {
-            text = ContentItemHelper.getText(contentPart.getValue());
-        } catch (IOException e) {
-            throw new InvalidContentException(this, ci, e);
-        }
-        if (text.trim().length() == 0) {
-            log.info("No text contained in ContentPart {} of ContentItem {}",
-                    contentPart.getKey(), ci.getUri());
-            return;
-        }
-        
-        List<Entity> entities = null;
-        try {
-            entities = annotator.Annotate(text);
-            log.info("entities identified: {}", entities);
-        } catch (Exception e) {
-            log.warn("Could not recognize entities", e);
-            return;
-        }
+
 
         // Add entities to metadata
         if (entities != null) {
@@ -354,9 +452,7 @@ public class DictionaryAnnotatorEnhancerEngine
             ci.getLock().writeLock().lock();
             try {
                 Language language = new Language("en");
-//                Map<String,UriRef> previousAnnotations = new LinkedHashMap<String,UriRef>();
-//                UriRef firstOccurrenceAnnotation = null;
-                
+
                 for (Entity e : entities) {
                     UriRef textEnhancement = EnhancementEngineHelper.createTextEnhancement(ci, this);
                     g.add(new TripleImpl(textEnhancement, ENHANCER_CONFIDENCE, literalFactory.createTypedLiteral(e.score)));
@@ -368,22 +464,6 @@ public class DictionaryAnnotatorEnhancerEngine
                     g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_REFERENCE, e.uri));
                     g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDF.type, typeURI));
                     g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDFS.label, new PlainLiteralImpl(e.label,language)));   
-                    
-//                    if (firstOccurrenceAnnotation == null) {
-//                        for (Map.Entry<String,UriRef> entry : previousAnnotations.entrySet()) {
-//                            if (entry.getKey().contains(e.label)) {
-//                                firstOccurrenceAnnotation = entry.getValue();
-//                                g.add(new TripleImpl(textEnhancement, DC_RELATION, firstOccurrenceAnnotation));
-//                                break;
-//                            }
-//                        }
-//                        if (firstOccurrenceAnnotation == null) {
-//                            firstOccurrenceAnnotation = textEnhancement;
-//                            previousAnnotations.put(e.label, textEnhancement);
-//                        }
-//                    } else {
-//                        g.add(new TripleImpl(textEnhancement, DC_RELATION, firstOccurrenceAnnotation));
-//                    }
                 }
             } finally {
                 ci.getLock().writeLock().unlock();
@@ -395,4 +475,47 @@ public class DictionaryAnnotatorEnhancerEngine
     public Map<String, Object> getServiceProperties() {
         return Collections.unmodifiableMap(Collections.singletonMap(ENHANCEMENT_ENGINE_ORDERING, (Object) defaultOrder));
     } 
+    
+    public Document stringToDom(String xmlSource) 
+            throws SAXException, ParserConfigurationException, IOException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        return builder.parse(new InputSource(new StringReader(xmlSource)));
+    }
+    
+    public List<String> findTag(String tagName, Element element) {
+        List<String> resultSet = null;
+        NodeList list = element.getElementsByTagName(tagName);
+        //System.out.println(list.getLength());
+        
+        try{
+            if (list != null && list.getLength() > 0) {
+                resultSet = new ArrayList<String>();
+                for (int i = 0; i < list.getLength(); i++) {
+                    Element e = (Element) list.item(i);
+                    if (e.getAttribute("xml:lang").equals("en") || e.getAttribute("xml:lang").equals("")) {
+                        resultSet.add(innerXml(list.item(i)));
+                    }
+                }
+            }
+            return resultSet;
+        }catch(IOException ex){
+            return null;
+        }
+    }
+    
+    public String innerXml(Node node) throws IOException {
+        DOMImplementationLS lsImpl = 
+                (DOMImplementationLS) node.getOwnerDocument().getImplementation().getFeature("LS", "3.0");
+        LSSerializer lsSerializer = lsImpl.createLSSerializer();
+        lsSerializer.getDomConfig().setParameter("xml-declaration", false);
+        NodeList childNodes = node.getChildNodes();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            sb.append(lsSerializer.writeToString(childNodes.item(i)));
+        }
+        Html2Text parser = new Html2Text();
+        parser.parse(new StringReader(sb.toString()));
+        return parser.getText();
+    }
 }
