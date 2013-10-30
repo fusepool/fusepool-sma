@@ -14,6 +14,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import opennlp.tools.tokenize.Tokenizer;
+import opennlp.tools.util.Span;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.arabidopsis.ahocorasick.SearchResult;
 import org.arabidopsis.ahocorasick.AhoCorasick;
@@ -25,6 +27,7 @@ import org.tartarus.snowball.SnowballStemmer;
  */
 public class DictionaryAnnotator {
     
+    private Tokenizer tokenizer;
     private TokenizedText tokenizedText;
     private List<TokenizedText> tokenizedTerms;
     private DictionaryStore originalDictionary;
@@ -48,14 +51,15 @@ public class DictionaryAnnotator {
      * @param _caseSensitiveLength
      * @param _eliminateOverlapping 
      */
-    public DictionaryAnnotator(DictionaryStore _dictionary, String _stemmingLanguage, boolean _caseSensitive, 
+    public DictionaryAnnotator(DictionaryStore _dictionary, Tokenizer _tokenizer, String _stemmingLanguage, boolean _caseSensitive, 
             int _caseSensitiveLength, boolean _eliminateOverlapping) {
         
         stemmingLanguage = _stemmingLanguage;
         caseSensitive = _caseSensitive;
         caseSensitiveLength = _caseSensitiveLength;
         eliminateOverlapping = _eliminateOverlapping;
-        
+        tokenizer = _tokenizer;
+
         if(stemmingLanguage == null)
         {
             stemmingLanguage = "None";
@@ -115,25 +119,15 @@ public class DictionaryAnnotator {
      * @return 
      */
     public List<Entity> Annotate(String text){
-//        long start = System.currentTimeMillis();
         tokenizedText = TokenizeText(text);
-//        long end = System.currentTimeMillis();
-//        System.out.println("TokenizeText: " + Long.toString(end - start) + "ms");
-        if(stemming) {
-//            start = System.currentTimeMillis();
-            StemText();
-//            end = System.currentTimeMillis();
-//            System.out.println("StemDocuments: " + Long.toString(end - start) + "ms");
-        }
-//        start = System.currentTimeMillis();
-        FindEntities(tokenizedText);
-//        end = System.currentTimeMillis();
-//        System.out.println("FindEntities: " + Long.toString(end - start) + "ms");
 
-//        start = System.currentTimeMillis();
+        if(stemming) {
+            StemText();
+        }
+
+        FindEntities(tokenizedText);
+
         EliminateOverlapping();
-//        end = System.currentTimeMillis();
-//        System.out.println("EliminateOverlapping: " + Long.toString(end - start) + "ms");
         
         List<Entity> entitiesToReturn = new ArrayList<Entity>(); 
         for(Entity e : entities){
@@ -182,18 +176,16 @@ public class DictionaryAnnotator {
      * @return 
      */
     public List<TokenizedText> TokenizeTerms(String[] originalTerms) {
-        StringReader sr;
-        PTBTokenizer ptbt;
         StringBuilder sb;
+        Span[] spans;
         String[] terms = originalTerms;
         
         List<TokenizedText> tlist = new ArrayList<TokenizedText>();
         TokenizedText tokText;
         for (int i = 0; i < originalTerms.length; i++) {
             tokText = new TokenizedText(originalTerms[i]);
-            
-            sr = new StringReader(terms[i]);
-            ptbt = new PTBTokenizer(sr, new CoreLabelTokenFactory(), "ptb3Escaping=false");
+
+            spans = tokenizer.tokenizePos(terms[i]);
             sb = new StringBuilder();
             
             Token t;
@@ -203,17 +195,16 @@ public class DictionaryAnnotator {
             sb.append(" ");
             if (caseSensitive) {
                 if (caseSensitiveLength > 0) {
-                    for (CoreLabel label; ptbt.hasNext();) {
-                        label = (CoreLabel) ptbt.next();
-                        word = label.word();
+                    for (Span span : spans) {
+                        word = terms[i].substring(span.getStart(), span.getEnd());
                         
                         if (word.length() > caseSensitiveLength) {
                             word = word.toLowerCase();
                         }
                         
                         t = new Token(word);
-                        t.setOriginalBegin(label.beginPosition());
-                        t.setOriginalEnd(label.endPosition());
+                        t.setOriginalBegin(span.getStart());
+                        t.setOriginalEnd(span.getEnd());
 
                         begin = position + 1;
                         t.setBegin(begin);
@@ -230,13 +221,12 @@ public class DictionaryAnnotator {
                     }
                 }
                 else{
-                    for (CoreLabel label; ptbt.hasNext();) {
-                        label = (CoreLabel) ptbt.next();
-                        word = label.word();
-
+                    for (Span span : spans) {
+                        word = terms[i].substring(span.getStart(), span.getEnd());
+                        
                         t = new Token(word);
-                        t.setOriginalBegin(label.beginPosition());
-                        t.setOriginalEnd(label.endPosition());
+                        t.setOriginalBegin(span.getStart());
+                        t.setOriginalEnd(span.getEnd());
 
                         begin = position + 1;
                         t.setBegin(begin);
@@ -253,15 +243,14 @@ public class DictionaryAnnotator {
                     }
                 }
             } else {
-                for (CoreLabel label; ptbt.hasNext();) {
-                    label = (CoreLabel) ptbt.next();
-                    word = label.word();
+                for (Span span : spans) {
+                    word = terms[i].substring(span.getStart(), span.getEnd());
 
                     word = word.toLowerCase();
 
                     t = new Token(word);
-                    t.setOriginalBegin(label.beginPosition());
-                    t.setOriginalEnd(label.endPosition());
+                    t.setOriginalBegin(span.getStart());
+                    t.setOriginalEnd(span.getEnd());
 
                     begin = position + 1;
                     t.setBegin(begin);
@@ -298,14 +287,12 @@ public class DictionaryAnnotator {
      * @return 
      */
     public TokenizedText TokenizeText(String text) {
-        StringReader sr;
-        PTBTokenizer ptbt;
+        Span[] spans;
         StringBuilder sb;
         
         TokenizedText tokText = new TokenizedText(text);
 
-        sr = new StringReader(text);
-        ptbt = new PTBTokenizer(sr, new CoreLabelTokenFactory(), "ptb3Escaping=false");
+        spans = tokenizer.tokenizePos(text);
         sb = new StringBuilder();
 
         Token t;
@@ -316,17 +303,16 @@ public class DictionaryAnnotator {
         sb.append(" ");
         if(caseSensitive){
             if(caseSensitiveLength > 0){
-                for (CoreLabel label; ptbt.hasNext();) {
-                    label = (CoreLabel) ptbt.next();
-                    word = label.word();
+                for (Span span : spans) {
+                    word = text.substring(span.getStart(), span.getEnd());
 
                     if(word.length() > caseSensitiveLength){
                         word = word.toLowerCase();
                     }
 
                     t = new Token(word);
-                    t.setOriginalBegin(label.beginPosition());
-                    t.setOriginalEnd(label.endPosition());
+                    t.setOriginalBegin(span.getStart());
+                    t.setOriginalEnd(span.getEnd());
 
                     begin = position + 1;
                     t.setBegin(begin);
@@ -343,13 +329,12 @@ public class DictionaryAnnotator {
                 }  
             }
             else{
-                for (CoreLabel label; ptbt.hasNext();) {
-                    label = (CoreLabel) ptbt.next();
-                    word = label.word();
-
+                for (Span span : spans) {
+                    word = text.substring(span.getStart(), span.getEnd());
+                    System.out.println(word);
                     t = new Token(word);
-                    t.setOriginalBegin(label.beginPosition());
-                    t.setOriginalEnd(label.endPosition());
+                    t.setOriginalBegin(span.getStart());
+                    t.setOriginalEnd(span.getEnd());
 
                     begin = position + 1;
                     t.setBegin(begin);
@@ -367,15 +352,14 @@ public class DictionaryAnnotator {
             }
         }
         else{
-            for (CoreLabel label; ptbt.hasNext();) {
-                label = (CoreLabel) ptbt.next();
-                word = label.word();
+            for (Span span : spans) {
+                word = text.substring(span.getStart(), span.getEnd());
 
                 word = word.toLowerCase();
 
                 t = new Token(word);
-                t.setOriginalBegin(label.beginPosition());
-                t.setOriginalEnd(label.endPosition());
+                t.setOriginalBegin(span.getStart());
+                t.setOriginalEnd(span.getEnd());
 
                 begin = position + 1;
                 t.setBegin(begin);

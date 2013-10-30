@@ -15,8 +15,11 @@
  */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
+import java.security.Permission;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,6 +33,9 @@ import org.w3c.dom.Element;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import opennlp.tools.tokenize.Tokenizer;
+import opennlp.tools.tokenize.TokenizerME;
+import opennlp.tools.tokenize.TokenizerModel;
 import org.apache.clerezza.platform.Constants;
 import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
 import org.apache.clerezza.rdf.core.Language;
@@ -40,6 +46,8 @@ import org.apache.clerezza.rdf.core.UriRef;
 import org.apache.clerezza.rdf.core.access.LockableMGraph;
 import org.apache.clerezza.rdf.core.access.NoSuchEntityException;
 import org.apache.clerezza.rdf.core.access.TcManager;
+import org.apache.clerezza.rdf.core.access.security.TcAccessController;
+import org.apache.clerezza.rdf.core.access.security.TcPermission;
 import org.apache.clerezza.rdf.core.impl.PlainLiteralImpl;
 import org.apache.clerezza.rdf.core.impl.TripleImpl;
 import org.apache.clerezza.rdf.core.sparql.ParseException;
@@ -193,6 +201,7 @@ public class DictionaryAnnotatorEnhancerEngine
     private Boolean caseSensitive;
     private Integer caseSensitiveLength;
     private Boolean eliminateOverlapping;
+    private Tokenizer tokenizer;
     
     @Activate
     @Override
@@ -242,7 +251,6 @@ public class DictionaryAnnotatorEnhancerEngine
 
             Object rf = config.get(RDF_FIELDS);         
             if (rf instanceof Iterable<?>) {
-                System.out.println("a");
                 rdfFields = new ArrayList<String>();
                 for (Object o : (Iterable<Object>) rf) {
                     if (o != null && !o.toString().isEmpty()) {
@@ -285,6 +293,22 @@ public class DictionaryAnnotatorEnhancerEngine
             Object eo = config.get(ELIMINATE_OVERLAPS);
             eliminateOverlapping = eo == null || eo.toString().isEmpty() ? null : (Boolean) eo;
         }        
+
+        //Loading tokenizer model
+        InputStream modelTokIn;
+        TokenizerModel modelTok;
+        try {
+            modelTokIn = this.getClass().getResourceAsStream("/models/en-token.bin");
+            modelTok = new TokenizerModel(modelTokIn);
+            tokenizer = new TokenizerME(modelTok);
+        } catch (FileNotFoundException ex) {
+            log.error("Error while loading tokenizer model: {}", ex.getMessage());
+        } catch (IOException ex) {
+            log.error("Error while loading tokenizer model: {}", ex.getMessage());
+        }
+        if(tokenizer == null){
+            log.error("Tokenizer cannot be NULL");
+        }
         
         //Concatenating SPARQL query
         String sparqlQuery = "";
@@ -299,15 +323,20 @@ public class DictionaryAnnotatorEnhancerEngine
         try {
             //Get TcManager
             TcManager tcManager = TcManager.getInstance();
-
+            TcAccessController tca;
+            
             //Get the graph by its URI
             LockableMGraph graph = null;
             try {
+                //graph = tcManager.getMGraph(new UriRef(graphURI));
                 graph = tcManager.getMGraph(new UriRef(graphURI));
+                tca = new TcAccessController(tcManager);
+                tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
+                    "urn:x-localinstance:/content.graph", "read"))
+                );
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
             }
-
 
             //Parse the SPARQL query
             SelectQuery selectQuery = null;
@@ -321,9 +350,12 @@ public class DictionaryAnnotatorEnhancerEngine
             
             if (graph != null) {
                 Lock l = graph.getLock().readLock();
+                l.lock();
                 try{
                     //Execute the SPARQL query
                     ResultSet resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
+                    
+                    //ResultSet resultSet = (ResultSet) tcManager.executeSparqlQuery(sparqlQuery, graph);
                     dictionary = new DictionaryStore();
                     while (resultSet.hasNext()) {
                         SolutionMapping mapping = resultSet.next();
@@ -335,13 +367,14 @@ public class DictionaryAnnotatorEnhancerEngine
                             continue;
                         }
                     }
-
+                    
                     long start, end;
                     start = System.currentTimeMillis();
                     System.err.print("Loading dictionary from " + graphURI + " (" + dictionary.keywords.size() + ") and creating search trie ...");
-                    annotator = new DictionaryAnnotator(dictionary, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
+                    annotator = new DictionaryAnnotator(dictionary, tokenizer, stemmingLanguage, caseSensitive, caseSensitiveLength, eliminateOverlapping);
                     end = System.currentTimeMillis();
                     System.err.println(" done [" + Double.toString((double)(end - start)/1000) + " sec] .");
+                    log.info("Loading dictionary from " + graphURI + " (" + dictionary.keywords.size() + ") and creating search trie ... done [" + Double.toString((double)(end - start)/1000) + " sec] .");
                 } finally {
                     l.unlock();
                 }
@@ -351,7 +384,7 @@ public class DictionaryAnnotatorEnhancerEngine
             }
         } catch(Exception e) {
             log.error("Error happened while creating the dictionary!",e);
-            System.out.println("Error happened while creating the dictionary!");
+            System.err.println("Error happened while creating the dictionary!");
             e.printStackTrace();
         }
     }
@@ -433,8 +466,6 @@ public class DictionaryAnnotatorEnhancerEngine
                 return;
             }
         }
-        
-        System.out.println(entities.size());
         
         if (contentPart == null) {
             throw new IllegalStateException("No ContentPart with Mimetype '"
