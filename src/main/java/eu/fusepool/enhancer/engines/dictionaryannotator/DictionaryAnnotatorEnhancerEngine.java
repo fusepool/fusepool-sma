@@ -334,6 +334,7 @@ public class DictionaryAnnotatorEnhancerEngine
                 tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
                     "urn:x-localinstance:/content.graph", "read"))
                 );
+                cgp.addTemporaryAdditionGraph(new UriRef(graphURI));
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
             }
@@ -345,8 +346,6 @@ public class DictionaryAnnotatorEnhancerEngine
             } catch (ParseException e) {
                 log.error("Cannot parse the SPARQL query", e);
             }
-
-            cgp.addTemporaryAdditionGraph(new UriRef(graphURI));
             
             if (graph != null) {
                 Lock l = graph.getLock().readLock();
@@ -393,6 +392,7 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void deactivate(ComponentContext context) {
         super.deactivate(context);
+        cgp.removeTemporaryAdditionGraph(new UriRef(graphURI));
         annotator = null;
     }
 
