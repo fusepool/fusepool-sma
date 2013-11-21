@@ -19,7 +19,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
-import java.security.Permission;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -41,13 +40,13 @@ import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
 import org.apache.clerezza.rdf.core.Language;
 import org.apache.clerezza.rdf.core.LiteralFactory;
 import org.apache.clerezza.rdf.core.MGraph;
+import org.apache.clerezza.rdf.core.Resource;
 import org.apache.clerezza.rdf.core.TypedLiteral;
 import org.apache.clerezza.rdf.core.UriRef;
 import org.apache.clerezza.rdf.core.access.LockableMGraph;
 import org.apache.clerezza.rdf.core.access.NoSuchEntityException;
 import org.apache.clerezza.rdf.core.access.TcManager;
 import org.apache.clerezza.rdf.core.access.security.TcAccessController;
-import org.apache.clerezza.rdf.core.access.security.TcPermission;
 import org.apache.clerezza.rdf.core.impl.PlainLiteralImpl;
 import org.apache.clerezza.rdf.core.impl.TripleImpl;
 import org.apache.clerezza.rdf.core.sparql.ParseException;
@@ -328,12 +327,11 @@ public class DictionaryAnnotatorEnhancerEngine
             //Get the graph by its URI
             LockableMGraph graph = null;
             try {
-                //graph = tcManager.getMGraph(new UriRef(graphURI));
                 graph = tcManager.getMGraph(new UriRef(graphURI));
-                tca = new TcAccessController(tcManager);
-                tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
-                    "urn:x-localinstance:/content.graph", "read"))
-                );
+//                tca = new TcAccessController(tcManager);
+//                tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
+//                    "urn:x-localinstance:/content.graph", "read"))
+//                );
                 cgp.addTemporaryAdditionGraph(new UriRef(graphURI));
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
@@ -346,27 +344,37 @@ public class DictionaryAnnotatorEnhancerEngine
             } catch (ParseException e) {
                 log.error("Cannot parse the SPARQL query", e);
             }
-            
+
             if (graph != null) {
                 Lock l = graph.getLock().readLock();
                 l.lock();
                 try{
+
                     //Execute the SPARQL query
                     ResultSet resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
-                    
                     //ResultSet resultSet = (ResultSet) tcManager.executeSparqlQuery(sparqlQuery, graph);
+                    
                     dictionary = new DictionaryStore();
                     while (resultSet.hasNext()) {
                         SolutionMapping mapping = resultSet.next();
                         try{
-                            TypedLiteral label = (TypedLiteral) mapping.get("label");
-                            UriRef uri = (UriRef) mapping.get("uri");
-                            dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                            Resource r = mapping.get("label");
+                            if(r instanceof TypedLiteral){
+                                TypedLiteral label = (TypedLiteral) r;
+                                UriRef uri = (UriRef) mapping.get("uri");
+                                dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                            }
+                            else{
+                                PlainLiteralImpl label = (PlainLiteralImpl) r;
+                                UriRef uri = (UriRef) mapping.get("uri");
+                                dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                            }
                         }catch(Exception e){
-                            continue;
+                            System.out.println(e.getMessage());
+                            break;
                         }
                     }
-                    
+
                     long start, end;
                     start = System.currentTimeMillis();
                     System.err.print("Loading dictionary from " + graphURI + " (" + dictionary.keywords.size() + ") and creating search trie ...");
