@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
 import java.util.ArrayList;
@@ -12,7 +8,7 @@ import org.apache.clerezza.rdf.core.UriRef;
  * This class represents an entity and stores its label, URI, begin and end
  * position, its weight, whether it overlaps with other entities and the label
  * divided into tokens.
- * @author Gabor
+ * @author Gábor Reményi
  */
 public class Entity {
     String label;

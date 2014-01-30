@@ -107,27 +107,56 @@ public class DictionaryAnnotatorEnhancerEngine
     @Reference
     ContentGraphProvider cgp;
     
+    /**
+     * Configuration properties
+     */
+    
+    /**
+     * A short description about about the engine.
+     */
     @Property
     public static final String DESCRIPTION = "eu.fusepool.enhancer.engines.dictionaryannotator.description";
     
+    /**
+     * The URI of the Clerezza MGraph/Graph used to store the data of the Yard that contains the dictionary.
+     */
     @Property
     public static final String GRAPH_URI = "eu.fusepool.enhancer.engines.dictionaryannotator.graphURI";
     
+    /**
+     * The field used to retrieve the label of each entity in the dictionary.
+     */
     @Property
     public static final String LABEL_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.labelField";
     
+    /**
+     * The field used to retrieve the URI value of each entity in the dictionary.
+     */
     @Property
     public static final String URI_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.URIField";    
     
+    /**
+     * Prefixes of URIs which are required to query the current dictionary.
+     */
     @Property(cardinality = 10)
     public static final String ENTITY_PREFIXES = "eu.fusepool.enhancer.engines.dictionaryannotator.entityPrefixes";  
     
+    /**
+     * Defines which fields are processed from an RDF document. (Only when input MIME type is application/rdf+xml.
+     */
     @Property(cardinality = 10)
     public static final String RDF_FIELDS = "eu.fusepool.enhancer.engines.dictionaryannotator.rdfFields"; 
     
+    /**
+     * The type and the URI of the type of the this model separated by a semicolon. The syntax 
+     * is "{type};{uri}", for example "PERSON;http://dbpedia.org/ontology/Person"
+     */
     @Property
     public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
     
+    /**
+     * A list of the avaliable languages for stemming.
+     */
     @Property(options={
         @PropertyOption(value="None",name="None"),
         @PropertyOption(value="Danish",name="Danish"),
@@ -148,12 +177,21 @@ public class DictionaryAnnotatorEnhancerEngine
         },value="None")
     public static final String STEMMING_LANGUAGE = "eu.fusepool.enhancer.engines.dictionaryannotator.stemmingLanguage";
     
+    /**
+     * Option to set the annotator case sensitive or case insensitive.
+     */
     @Property(boolValue=false)
     public static final String CASE_SENSITIVE = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitive";
 
+    /**
+     * This option offers a case sensitivity based on the length of each token.
+     */
     @Property(intValue=3)
     public static final String CASE_SENSITIVE_LENGTH = "eu.fusepool.enhancer.engines.dictionaryannotator.caseSensitiveLength";
     
+    /**
+     * Option to elimination overlapping matches in the result set.
+     */
     @Property(boolValue=false)
     public static final String ELIMINATE_OVERLAPS = "eu.fusepool.enhancer.engines.dictionaryannotator.eliminateOverlapping";
     
@@ -207,23 +245,24 @@ public class DictionaryAnnotatorEnhancerEngine
     protected void activate(ComponentContext context) throws ConfigurationException {
         super.activate(context);
 
+        // the engine supports two mime types: text/plain and application/rdf+xml
         SUPPORTED_MIMTYPES = new HashSet();
         SUPPORTED_MIMTYPES.add(TEXT_PLAIN_MIMETYPE);
         SUPPORTED_MIMTYPES.add(RDF_XML_MIMETYPE);
         
-        //Read configuration
+        // read configuration
         if (context != null) {
             Dictionary<String,Object> config = context.getProperties();
-            
+            // reading graph uri property
             Object gu = config.get(GRAPH_URI);
             graphURI = gu == null || gu.toString().isEmpty() ? null : gu.toString();
-
+            // reading label field property
             Object lf = config.get(LABEL_FIELD);
             labelField = lf == null || lf.toString().isEmpty() ? null : lf.toString();
-            
+            // reading uri field property
             Object uf = config.get(URI_FIELD);
             URIField = uf == null || uf.toString().isEmpty() ? null : uf.toString();
-            
+            // reading entity prefixes property
             Object ep = config.get(ENTITY_PREFIXES);
             if (ep instanceof Iterable<?>) {
                 entityPrefixes = new ArrayList<String>();
@@ -247,7 +286,7 @@ public class DictionaryAnnotatorEnhancerEngine
             } else {
                 entityPrefixes = null;
             }
-
+            // reading rdf fields property
             Object rf = config.get(RDF_FIELDS);         
             if (rf instanceof Iterable<?>) {
                 rdfFields = new ArrayList<String>();
@@ -271,7 +310,7 @@ public class DictionaryAnnotatorEnhancerEngine
             } else {
                 rdfFields = null;
             }
-                  
+            // reading type property
             Object t = config.get(TYPE);        
             if(t != null || !t.toString().isEmpty())
             {
@@ -279,21 +318,21 @@ public class DictionaryAnnotatorEnhancerEngine
                 type = val[0];
                 typeURI = new UriRef(val[1]);
             }
-
+            // reading stemming language property
             Object sl = config.get(STEMMING_LANGUAGE);
             stemmingLanguage = sl == null ? "None" : sl.toString();
-            
+            // reading case sentitive property
             Object cs = config.get(CASE_SENSITIVE);
             caseSensitive = cs == null || cs.toString().isEmpty() ? null : (Boolean) cs;
-            
+            // reading case sentitive length property
             Object csl = config.get(CASE_SENSITIVE_LENGTH);
             caseSensitiveLength = csl == null || csl.toString().isEmpty() ? null : (Integer) csl;
-
+            // reading eliminate overlaps property
             Object eo = config.get(ELIMINATE_OVERLAPS);
             eliminateOverlapping = eo == null || eo.toString().isEmpty() ? null : (Boolean) eo;
         }        
 
-        //Loading tokenizer model
+        // loading opennlp tokenizer model
         InputStream modelTokIn;
         TokenizerModel modelTok;
         try {
@@ -309,7 +348,7 @@ public class DictionaryAnnotatorEnhancerEngine
             log.error("Tokenizer cannot be NULL");
         }
         
-        //Concatenating SPARQL query
+        // concatenating SPARQL query
         String sparqlQuery = "";
         for (String prefix : entityPrefixes) {
             sparqlQuery += "PREFIX " + prefix + "\n";
@@ -320,11 +359,11 @@ public class DictionaryAnnotatorEnhancerEngine
                 + " }";
 
         try {
-            //Get TcManager
+            // get TcManager instance
             TcManager tcManager = TcManager.getInstance();
             TcAccessController tca;
             
-            //Get the graph by its URI
+            // get the graph by its URI
             LockableMGraph graph = null;
             try {
                 graph = tcManager.getMGraph(new UriRef(graphURI));
@@ -332,12 +371,13 @@ public class DictionaryAnnotatorEnhancerEngine
 //                tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
 //                    "urn:x-localinstance:/content.graph", "read"))
 //                );
+                // add the graph as a temporary addition to the content graph
                 cgp.addTemporaryAdditionGraph(new UriRef(graphURI));
             } catch (NoSuchEntityException e) {
                 log.error("Enhancement Graph must be existing", e);
             }
 
-            //Parse the SPARQL query
+            // parse the SPARQL query
             SelectQuery selectQuery = null;
             try {
                 selectQuery = (SelectQuery) QueryParser.getInstance().parse(sparqlQuery);
@@ -346,11 +386,12 @@ public class DictionaryAnnotatorEnhancerEngine
             }
 
             if (graph != null) {
+                // creating a read lock
                 Lock l = graph.getLock().readLock();
                 l.lock();
                 try{
 
-                    //Execute the SPARQL query
+                    // execute the SPARQL query
                     ResultSet resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
                     //ResultSet resultSet = (ResultSet) tcManager.executeSparqlQuery(sparqlQuery, graph);
                     
@@ -359,22 +400,27 @@ public class DictionaryAnnotatorEnhancerEngine
                         SolutionMapping mapping = resultSet.next();
                         try{
                             Resource r = mapping.get("label");
+                            // if the label is a TypedLiteral
                             if(r instanceof TypedLiteral){
                                 TypedLiteral label = (TypedLiteral) r;
                                 UriRef uri = (UriRef) mapping.get("uri");
+                                // add elements to the dictionary
                                 dictionary.AddOriginalElement(label.getLexicalForm(), uri);
                             }
+                            // else use PlainLiteralImpl
                             else{
                                 PlainLiteralImpl label = (PlainLiteralImpl) r;
                                 UriRef uri = (UriRef) mapping.get("uri");
+                                // add elements to the dictionary
                                 dictionary.AddOriginalElement(label.getLexicalForm(), uri);
                             }
                         }catch(Exception e){
-                            System.out.println(e.getMessage());
+                            log.error("Cannot read resultset", e);
                             break;
                         }
                     }
 
+                    // creating a dictionary annotator instance
                     long start, end;
                     start = System.currentTimeMillis();
                     System.err.print("Loading dictionary from " + graphURI + " (" + dictionary.keywords.size() + ") and creating search trie ...");
@@ -392,7 +438,6 @@ public class DictionaryAnnotatorEnhancerEngine
         } catch(Exception e) {
             log.error("Error happened while creating the dictionary!",e);
             System.err.println("Error happened while creating the dictionary!");
-            e.printStackTrace();
         }
     }
 
@@ -400,12 +445,25 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     protected void deactivate(ComponentContext context) {
         super.deactivate(context);
+        // remove the temporary addition from the content graph
         cgp.removeTemporaryAdditionGraph(new UriRef(graphURI));
         annotator = null;
     }
 
     @Override
     public int canEnhance(ContentItem ci) throws EngineException {
+        // check if content is present
+        try {
+            if ((ci.getBlob() == null)
+                    || (ci.getBlob().getStream().read() == -1)) {
+                return CANNOT_ENHANCE;
+            }
+        } catch (IOException e) {
+            log.error("Failed to get the text for "
+                    + "enhancement of content: " + ci.getUri(), e);
+            throw new InvalidContentException(this, ci, e);
+        }
+        // no reason why we should require to be executed synchronously
         return ENHANCE_ASYNC;
     }
 
@@ -418,10 +476,11 @@ public class DictionaryAnnotatorEnhancerEngine
         Document rdf = null;
         Element rootElement;
         
+        // if MIME typs is text/plain
         if(TEXT_PLAIN_MIMETYPE.equals(ci.getMimeType())){
             contentPart = ContentItemHelper.getBlob(ci, SUPPORTED_MIMTYPES);
-            
             try {
+                // get input text content
                 text = ContentItemHelper.getText(contentPart.getValue());
             } catch (IOException e) {
                 throw new InvalidContentException(this, ci, e);
@@ -432,21 +491,23 @@ public class DictionaryAnnotatorEnhancerEngine
             }
 
             try {
+                // extract entities from text input
                 entities = annotator.Annotate(text);
-                log.info("entities identified: {}", entities);
             } catch (Exception e) {
                 log.warn("Could not recognize entities", e);
                 return;
             }
         }
+        // if MIME type is application/rdf+xml
         else if(RDF_XML_MIMETYPE.equals(ci.getMimeType())){
             contentPart = ContentItemHelper.getBlob(ci, SUPPORTED_MIMTYPES);
-
             try {
+                // get input text content
                 text = ContentItemHelper.getText(contentPart.getValue());
+                // create DOM object from string rdf
                 rdf = this.stringToDom(text);
                 rootElement = rdf.getDocumentElement();
-                
+                // look-up tags defined in rdf fields property
                 for (String field : rdfFields) {
                     List<String> currentText = this.findTag(field, rootElement);
                     if(currentText != null){
@@ -463,14 +524,15 @@ public class DictionaryAnnotatorEnhancerEngine
             try {
                 entities = new ArrayList<Entity>();
                 for (String textItem : texts) {
+                    // extract entities from each text part
                     List<Entity> currentEntities = annotator.Annotate(textItem);
                     if (currentEntities != null) {
+                        // collect all entities from the document
                         entities.addAll(currentEntities);
                     }
                 }
             } catch (Exception e) {
                 log.warn("Could not recognize entities", e);
-                e.printStackTrace();
                 return;
             }
         }
@@ -484,14 +546,14 @@ public class DictionaryAnnotatorEnhancerEngine
         }
 
 
-        // Add entities to metadata
+        // add entities to metadata
         if (entities != null) {
             LiteralFactory literalFactory = LiteralFactory.getInstance();
             MGraph g = ci.getMetadata();
             ci.getLock().writeLock().lock();
             try {
                 Language language = new Language("en");
-
+                // add enhancements to MGraph
                 for (Entity e : entities) {
                     UriRef textEnhancement = EnhancementEngineHelper.createTextEnhancement(ci, this);
                     g.add(new TripleImpl(textEnhancement, ENHANCER_CONFIDENCE, literalFactory.createTypedLiteral(e.score)));
@@ -509,52 +571,91 @@ public class DictionaryAnnotatorEnhancerEngine
             }
         }
     }
-
-    @Override
-    public Map<String, Object> getServiceProperties() {
-        return Collections.unmodifiableMap(Collections.singletonMap(ENHANCEMENT_ENGINE_ORDERING, (Object) defaultOrder));
-    } 
     
+    /**
+     * ServiceProperties are currently only used for automatic ordering of the 
+     * execution of EnhancementEngines (e.g. by the WeightedChain implementation).
+     * Default ordering means that the engine is called after all engines that
+     * use a value < {@link ServiceProperties#ORDERING_CONTENT_EXTRACTION}
+     * and >= {@link ServiceProperties#ORDERING_EXTRACTION_ENHANCEMENT}.
+     */
+    public Map getServiceProperties() {
+        return Collections.unmodifiableMap(Collections.singletonMap(
+                ENHANCEMENT_ENGINE_ORDERING, ORDERING_DEFAULT));
+    }
+    
+    /**
+     * Creates a DOM object from a string source.
+     * @param xmlSource Contains an XML source.
+     * @return
+     * @throws SAXException
+     * @throws ParserConfigurationException
+     * @throws IOException 
+     */
     public Document stringToDom(String xmlSource) 
             throws SAXException, ParserConfigurationException, IOException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         DocumentBuilder builder = factory.newDocumentBuilder();
+        // parse XML string into a DOM object
         return builder.parse(new InputSource(new StringReader(xmlSource)));
     }
     
+    /**
+     * Finding and extracting specific tags from an element. All occurrences
+     * of the specified tag are returned and the returned texts are striped from 
+     * any HTML or XML tags.
+     * @param tagName   Name of the tag we are looking for.
+     * @param element   The element in which the look-up is performed.
+     * @return 
+     */
     public List<String> findTag(String tagName, Element element) {
         List<String> resultSet = null;
+        // the list of nodes with the same name
         NodeList list = element.getElementsByTagName(tagName);
-        //System.out.println(list.getLength());
-        
         try{
             if (list != null && list.getLength() > 0) {
                 resultSet = new ArrayList<String>();
+                // iterate through the nodes
                 for (int i = 0; i < list.getLength(); i++) {
                     Element e = (Element) list.item(i);
                     if (e.getAttribute("xml:lang").equals("en") || e.getAttribute("xml:lang").equals("")) {
+                        // extract and clean text from node
                         resultSet.add(innerXml(list.item(i)));
                     }
                 }
             }
             return resultSet;
-        }catch(IOException ex){
+        }catch(IOException e){
+            log.warn("Exception occured while extracting text.", e);
             return null;
         }
     }
     
+    /**
+     * Extracts all text from the node and strips it from all HTML
+     * and XML tags.
+     * @param node  The node that contains the HTML text.
+     * @return  Clean plain text.
+     * @throws IOException 
+     */
     public String innerXml(Node node) throws IOException {
         DOMImplementationLS lsImpl = 
                 (DOMImplementationLS) node.getOwnerDocument().getImplementation().getFeature("LS", "3.0");
+        // create a LS serializer
         LSSerializer lsSerializer = lsImpl.createLSSerializer();
         lsSerializer.getDomConfig().setParameter("xml-declaration", false);
+        // get all childnodes
         NodeList childNodes = node.getChildNodes();
+        // concaterate all content from childnodes
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < childNodes.getLength(); i++) {
             sb.append(lsSerializer.writeToString(childNodes.item(i)));
         }
+        // create a HTML parser
         Html2Text parser = new Html2Text();
+        // parse HTML text
         parser.parse(new StringReader(sb.toString()));
+        // return cleaned text
         return parser.getText();
     }
 }

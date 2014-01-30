@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
 import java.util.ArrayList;
@@ -11,19 +7,19 @@ import java.util.List;
  * This object is used to store the results of the tokenization process. 
  * During tokenization the original text is divided into tokens.
  * 
- * @author Gabor
+ * @author Gábor Reményi
  */
 public class TokenizedText {
-    //original text, before tokenization
+    // original text, before tokenization
     String originalText;
-    //tokenized text
+    // tokenized text
     String text;
-    //token list created from the original text
+    // token list created from the original text
     List<Token> tokens;
     
     /**
      * Simple constructor.
-     * @param originalText 
+     * @param originalText Original contiguous text
      */
     public TokenizedText(String originalText) {
         this.originalText = originalText;
@@ -32,7 +28,7 @@ public class TokenizedText {
     
     /**
      * Sets the tokenized text.
-     * @param text 
+     * @param text Tokenized contiguous text, tokens divided by white spaces
      */
     public void setText(String text) {
         this.text = text;
@@ -40,7 +36,7 @@ public class TokenizedText {
     
     /**
      * Sets the token list.
-     * @param tokens 
+     * @param tokens A generic list of tokens
      */
     public void setTokens(List<Token> tokens) {
         this.tokens = tokens;
@@ -48,7 +44,7 @@ public class TokenizedText {
     
     /**
      * Adds a new token to the list.
-     * @param t 
+     * @param t New token
      */
     public void addToken(Token t) {
         this.tokens.add(t);
@@ -68,6 +64,7 @@ public class TokenizedText {
                 e.addToken(t);
             }
         }
+        // finding the entity in the original (not tokenized) text
         e.FindEntityInOriginalText(originalText);
         return e;
     }

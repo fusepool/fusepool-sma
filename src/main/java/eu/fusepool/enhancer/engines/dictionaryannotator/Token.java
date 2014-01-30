@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
 /**
@@ -9,18 +5,23 @@ package eu.fusepool.enhancer.engines.dictionaryannotator;
  * Tokenization is the process of breaking a stream of text up into words, 
  * phrases, symbols, or other meaningful elements called tokens. 
  * 
- * @author Gabor
+ * @author Gábor Reményi
  */
 public class Token {
+    // the token
     String text;
+    // the begining of the token in the tokenized text
     int begin;
+    // the end of the token in the tokenized text
     int end;
+    // the begining of the token in the original text
     int originalBegin;
+    // the end of the token in the original text
     int originalEnd;
     
     /**
      * Simple constructor. 
-     * @param text 
+     * @param text The token
      */
     public Token(String text) {
         this.text = text;

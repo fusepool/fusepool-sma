@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package eu.fusepool.enhancer.engines.dictionaryannotator;
 
 import java.util.ArrayList;
@@ -19,17 +15,19 @@ import org.tartarus.snowball.SnowballStemmer;
 
 /**
  * 
- * @author Gabor
+ * @author Gábor Reményi
  */
 public class DictionaryAnnotator {
-    
+    // contains the search tree 
+    private AhoCorasick tree;
+    // OpenNLP tokenizer class
     private Tokenizer tokenizer;
     private TokenizedText tokenizedText;
     private List<TokenizedText> tokenizedTerms;
     private DictionaryStore originalDictionary;
     private DictionaryStore processedDictionary;
     private List<Entity> entities;
-    private AhoCorasick tree;
+    
     private boolean caseSensitive;
     private int caseSensitiveLength;
     private boolean eliminateOverlapping;
@@ -40,14 +38,14 @@ public class DictionaryAnnotator {
     /**
      * Initializes the dictionary annotator by reading the dictionary and building
      * the search tree which is the soul of the Aho-Corasic algorithm.
-     * 
-     * @param _dictionary
+     * @param dictionary
+     * @param _tokenizer
      * @param _stemmingLanguage
      * @param _caseSensitive
      * @param _caseSensitiveLength
      * @param _eliminateOverlapping 
      */
-    public DictionaryAnnotator(DictionaryStore _dictionary, Tokenizer _tokenizer, String _stemmingLanguage, boolean _caseSensitive, 
+    public DictionaryAnnotator(DictionaryStore dictionary, Tokenizer _tokenizer, String _stemmingLanguage, boolean _caseSensitive, 
             int _caseSensitiveLength, boolean _eliminateOverlapping) {
         
         stemmingLanguage = _stemmingLanguage;
@@ -56,6 +54,7 @@ public class DictionaryAnnotator {
         eliminateOverlapping = _eliminateOverlapping;
         tokenizer = _tokenizer;
 
+        // if no stemming language configuration is provided set stemming language to None
         if(stemmingLanguage == null)
         {
             stemmingLanguage = "None";
@@ -64,25 +63,26 @@ public class DictionaryAnnotator {
         {
             stemmingLanguage = "None";
         }
-        
+        // create a mapping between the language and the name of the class
+        // responsible for the stemming of the current language
         languages = new HashMap<String,String>();
         languages.put("None", "");
-        languages.put("Danish", "danish");
-        languages.put("Dutch", "dutch");
-        languages.put("English", "english");
-        languages.put("Finnish", "finnish");
-        languages.put("French", "french");
-        languages.put("German", "german");
-        languages.put("Hungarian", "hungarian");
-        languages.put("Italian", "italian");
-        languages.put("Norwegian", "norwegian");
-        //languages.put("english2", "porter");
-        languages.put("Portuguese", "portuguese");
-        languages.put("Romanian", "romanian");
-        languages.put("Russian", "russian");
-        languages.put("Spanish", "spanish");
-        languages.put("Swedish", "swedish");
-        languages.put("Turkish", "turkish");
+        languages.put("Danish", "danishStemmer");
+        languages.put("Dutch", "dutchStemmer");
+        languages.put("English", "englishStemmer");
+        languages.put("Finnish", "finnishStemmer");
+        languages.put("French", "frenchStemmer");
+        languages.put("German", "germanStemmer");
+        languages.put("Hungarian", "hungarianStemmer");
+        languages.put("Italian", "italianStemmer");
+        languages.put("Norwegian", "norwegianStemmer");
+        //languages.put("english2", "porterStemmer");
+        languages.put("Portuguese", "portugueseStemmer");
+        languages.put("Romanian", "romanianStemmer");
+        languages.put("Russian", "russianStemmer");
+        languages.put("Spanish", "spanishStemmer");
+        languages.put("Swedish", "swedishStemmer");
+        languages.put("Turkish", "turkishStemmer");
         
         originalDictionary = new DictionaryStore();
         processedDictionary = new DictionaryStore();
@@ -95,14 +95,18 @@ public class DictionaryAnnotator {
             }
         }
         
-        String[] terms = ReadDictionary(_dictionary.keywords);
+        // read labels from the input dictionary
+        String[] terms = ReadDictionary(dictionary.keywords);
+        // tokenize terms in the dictionary
         tokenizedTerms = TokenizeTerms(terms);
         
+        // if stemming language was set, perform stemming of terms in the dictionary
         if(stemming) {
             StemTerms();
         }
         
         tree = new AhoCorasick();
+        // add each term to the seachtree
         for (TokenizedText e : tokenizedTerms) {
             tree.add(e.text, e.text);
 	}
@@ -111,18 +115,22 @@ public class DictionaryAnnotator {
     
     /**
      * Processes the input text and returns the found entities.
-     * @param text
+     * @param text  Input text on which the dictionary matching is executed
      * @return 
      */
     public List<Entity> Annotate(String text){
+        // tokenize text
         tokenizedText = TokenizeText(text);
 
+        // if stemming language was set, perform stemming of the input text
         if(stemming) {
             StemText();
         }
 
+        // perform the look-up
         FindEntities(tokenizedText);
-
+        
+        // eliminate overlapping entities
         EliminateOverlapping();
         
         List<Entity> entitiesToReturn = new ArrayList<Entity>(); 
@@ -135,12 +143,12 @@ public class DictionaryAnnotator {
     }
     
     /**
-     * Reads the dictionary from the input stream.
-     * @param input
+     * Creates the dictionary from the HashMap which contains label-URI pairs.
+     * @param input The original dictionary as a HashMap (label-URI pairs)
      * @return 
      */
     private String[] ReadDictionary(Map<String,UriRef> dictionary) {
-        String[] entities = new String[dictionary.size()];
+        String[] labels = new String[dictionary.size()];
         Set set = dictionary.entrySet();
         Iterator iterator = set.iterator();
         
@@ -151,11 +159,11 @@ public class DictionaryAnnotator {
             Map.Entry me = (Map.Entry)iterator.next();
             label = (String) me.getKey();
             uri = (UriRef) me.getValue();
-            entities[index] = label;
+            labels[index] = label;
             originalDictionary.AddElement(label, uri);       
             index++;
         }         
-        return entities;
+        return labels;
     }
 
     /**
@@ -378,7 +386,7 @@ public class DictionaryAnnotator {
     /**
      * This function runs the Aho-Corasick string matching algorithm on the 
      * tokenized (and stemmed) text using the search tree built from the dictionary.
-     * @param tokenizedText 
+     * @param tokenizedText The tokenized text
      */
     private void FindEntities(TokenizedText tokenizedText){
         entities = new ArrayList<Entity>();
@@ -471,8 +479,8 @@ public class DictionaryAnnotator {
             String word = "";
             String name;
             UriRef uri;
-            StringBuilder sb = new StringBuilder();
-            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage + "Stemmer");
+            StringBuilder sb;
+            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
             SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
             for (TokenizedText tokenizedText : tokenizedTerms) {
                 sb = new StringBuilder();
@@ -517,7 +525,7 @@ public class DictionaryAnnotator {
             int overallOffset = 0;
             String word = "";
             StringBuilder sb = new StringBuilder();
-            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage + "Stemmer");
+            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
             SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
 
             sb = new StringBuilder();
@@ -525,7 +533,7 @@ public class DictionaryAnnotator {
             for (Token token : tokenizedText.tokens) {
                 stemmer.setCurrent(token.text);
                 stemmer.stem();
-                word = stemmer.getCurrent();   //TODO save stemmed text and new positions
+                word = stemmer.getCurrent();
 
                 offset = token.text.length() - word.length();
 
