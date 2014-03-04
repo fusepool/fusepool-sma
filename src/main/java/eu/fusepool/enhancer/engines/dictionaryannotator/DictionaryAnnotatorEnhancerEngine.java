@@ -369,7 +369,7 @@ public class DictionaryAnnotatorEnhancerEngine
             LockableMGraph graph = null;
             try {
                 graph = tcManager.getMGraph(new UriRef(graphURI));
-                tca = new TcAccessController(tcManager);
+                tca = tcManager.getTcAccessController();
                 tca.setRequiredReadPermissions(new UriRef(graphURI),Collections.singleton((Permission)new TcPermission(
                     "urn:x-localinstance:/content.graph", "read"))
                 );
