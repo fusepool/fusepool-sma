@@ -402,8 +402,6 @@ public class DictionaryAnnotator {
                     str = e.toString();
                     maxlength = length;
                 }
-//                System.out.println("name\t-->\t\"" + str + "\"");
-//                System.out.println("begin\t-->\t" + (result.getLastIndex() - str.length()));
             }
             if(!str.equals("")){
             	str = str.substring(1, str.length() - 1);
