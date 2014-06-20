@@ -14,3 +14,16 @@ The outcome of this project is an OSGi bundle (enhancement engine) for Apache St
 The enhancer engine can contains multiple SMA instances, each instance is a separate module, and therefore each module has its own configuration page inside Stanbol Configuration Manager. It also means that different SMA instances can be part of different enhancer chains.
 
 Currenty Fusepool-SMA has one enhancer instance that uses the disease ontology from http://disease-ontology.org/. The name of this instance is "smaDisease". This same name must be used when configuring a chain in order to use it.
+
+###Install
+
+Clone the repository to your local machine
+<code>git clone https://github.com/fusepool/fusepool-sma.git</code>
+
+To compile the bundle run
+
+<code>mvn install</code>
+
+To deploy the engine to a stanbol instance running on localhost port 8080 run
+
+<code>mvn org.apache.sling:maven-sling-plugin:install</code>
