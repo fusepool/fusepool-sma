@@ -10,6 +10,8 @@ package eu.fusepool.enhancer.engines.dictionaryannotator;
 public class Token {
     // the token
     String text;
+    // the stem of the token
+    String stem;
     // the begining of the token in the tokenized text
     int begin;
     // the end of the token in the tokenized text
@@ -18,6 +20,8 @@ public class Token {
     int originalBegin;
     // the end of the token in the original text
     int originalEnd;
+    //type of token
+    String type;
     
     /**
      * Simple constructor. 
@@ -25,6 +29,7 @@ public class Token {
      */
     public Token(String text) {
         this.text = text;
+        this.type = "O";
     }
     
     /**
@@ -59,8 +64,53 @@ public class Token {
         this.originalEnd = originalEnd;
     }
 
+    public Boolean IsLocationEquals(int begin, int end){
+        if(this.begin == begin && this.end == end){
+            return true;
+        }
+        return false;
+    }
+    
+    public Boolean IsBeginEquals(int begin){
+        if(this.begin == begin){
+            return true;
+        }
+        return false;
+    }
+    
+    public Boolean IsEndEquals(int end){
+        if(this.end == end){
+            return true;
+        }
+        return false;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getStem() {
+        return stem;
+    }
+
+    public void setStem(String stem) {
+        this.stem = stem;
+    }
+    
     @Override
     public String toString() {
-        return "Token{" + "text=" + text + ", begin=" + begin + ", end=" + end + '}';
+        return "Token{" + "text=" + text + ", begin=" + begin + ", end=" + end + ", type=" + type + '}';
     }
 }

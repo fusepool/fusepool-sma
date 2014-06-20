@@ -9,11 +9,13 @@ import java.util.List;
  * 
  * @author Gábor Reményi
  */
-public class TokenizedText {
+public class ProcessedText {
     // original text, before tokenization
     String originalText;
     // tokenized text
-    String text;
+    String tokenizedText;
+    // stemmed text
+    String stemmedText;
     // token list created from the original text
     List<Token> tokens;
     
@@ -21,17 +23,47 @@ public class TokenizedText {
      * Simple constructor.
      * @param originalText Original contiguous text
      */
-    public TokenizedText(String originalText) {
+    public ProcessedText(String originalText) {
         this.originalText = originalText;
         this.tokens = new ArrayList<Token>();
+    }
+    
+    public void GetToken(Annotation e){
+        Boolean multitoken = false;
+        for (Token t : tokens) {
+            if(t.IsBeginEquals(e.getTokenizedBegin())){
+                if(t.IsLocationEquals(e.getTokenizedBegin(), e.getTokenizedEnd())){
+                    t.setType(e.getType());
+                    break;
+                }
+                else{
+                    t.setType(e.getType());
+                    multitoken = true;
+                }
+            }
+            else if(multitoken){
+                t.setType(e.getType());
+                if(t.IsEndEquals(e.getTokenizedEnd())){
+                    break;
+                }
+            }
+        }
     }
     
     /**
      * Sets the tokenized text.
      * @param text Tokenized contiguous text, tokens divided by white spaces
      */
-    public void setText(String text) {
-        this.text = text;
+    public void setTokenizedText(String text) {
+        this.tokenizedText = text;
+    }
+    
+    /**
+     * Sets the stemmed text.
+     * @param text Stemmed contiguous text, tokens divided by white spaces
+     */
+    public void setStemmedText(String text) {
+        this.stemmedText = text;
     }
     
     /**
@@ -57,8 +89,9 @@ public class TokenizedText {
      * @param end
      * @return 
      */
-    public Entity FindMatch(int begin, int end){
-        Entity e = new Entity();
+    public Annotation FindMatch(int begin, int end){
+        Annotation e = new Annotation();
+
         for (Token t : this.tokens) {
             if(t.begin >= begin && t.end <= end){
                 e.addToken(t);

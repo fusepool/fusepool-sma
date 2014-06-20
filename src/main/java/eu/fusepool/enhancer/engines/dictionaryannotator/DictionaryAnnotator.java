@@ -7,11 +7,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import opennlp.tools.tokenize.Tokenizer;
+import opennlp.tools.tokenize.TokenizerModel;
 import opennlp.tools.util.Span;
-import org.apache.clerezza.rdf.core.UriRef;
 import org.arabidopsis.ahocorasick.SearchResult;
 import org.arabidopsis.ahocorasick.AhoCorasick;
 import org.tartarus.snowball.SnowballStemmer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 
@@ -21,12 +23,14 @@ public class DictionaryAnnotator {
     // contains the search tree 
     private AhoCorasick tree;
     // OpenNLP tokenizer class
+    private TokenizerModel modelTok;
     private Tokenizer tokenizer;
-    private TokenizedText tokenizedText;
-    private List<TokenizedText> tokenizedTerms;
+    private ProcessedText processedText;
+    private List<ProcessedText> processedTerms;
+    private DictionaryStore dictionary;
     private DictionaryStore originalDictionary;
     private DictionaryStore processedDictionary;
-    private List<Entity> entities;
+    private List<Annotation> annotations;
     
     private boolean caseSensitive;
     private int caseSensitiveLength;
@@ -45,27 +49,24 @@ public class DictionaryAnnotator {
      * @param _caseSensitiveLength
      * @param _eliminateOverlapping 
      */
-    public DictionaryAnnotator(DictionaryStore dictionary, Tokenizer _tokenizer, String _stemmingLanguage, boolean _caseSensitive, 
-            int _caseSensitiveLength, boolean _eliminateOverlapping) {
+    public DictionaryAnnotator(DictionaryStore _dictionary, Tokenizer _tokenizer, String _stemmingLanguage, boolean _caseSensitive, 
+            int _caseSensitiveLength, boolean _eliminateOverlapping) throws Exception  {
         
+        dictionary = _dictionary;
+        tokenizer = _tokenizer;
         stemmingLanguage = _stemmingLanguage;
         caseSensitive = _caseSensitive;
         caseSensitiveLength = _caseSensitiveLength;
         eliminateOverlapping = _eliminateOverlapping;
-        tokenizer = _tokenizer;
-
+        
         // if no stemming language configuration is provided set stemming language to None
-        if(stemmingLanguage == null)
-        {
-            stemmingLanguage = "None";
-        }
-        else if(stemmingLanguage.isEmpty())
+        if(stemmingLanguage == null || stemmingLanguage.isEmpty())
         {
             stemmingLanguage = "None";
         }
         // create a mapping between the language and the name of the class
         // responsible for the stemming of the current language
-        languages = new HashMap<String,String>();
+        languages = new HashMap<String, String>();
         languages.put("None", "");
         languages.put("Danish", "danishStemmer");
         languages.put("Dutch", "dutchStemmer");
@@ -76,7 +77,6 @@ public class DictionaryAnnotator {
         languages.put("Hungarian", "hungarianStemmer");
         languages.put("Italian", "italianStemmer");
         languages.put("Norwegian", "norwegianStemmer");
-        //languages.put("english2", "porterStemmer");
         languages.put("Portuguese", "portugueseStemmer");
         languages.put("Romanian", "romanianStemmer");
         languages.put("Russian", "russianStemmer");
@@ -96,31 +96,40 @@ public class DictionaryAnnotator {
         }
         
         // read labels from the input dictionary
-        String[] terms = ReadDictionary(dictionary.keywords);
+        String[] terms = ReadDictionary();
+        
         // tokenize terms in the dictionary
-        tokenizedTerms = TokenizeTerms(terms);
+        TokenizeTerms(terms);
+        
+        tree = new AhoCorasick();
         
         // if stemming language was set, perform stemming of terms in the dictionary
         if(stemming) {
             StemTerms();
+            // add each term to the seachtree
+            for (ProcessedText e : processedTerms) {
+                tree.add(e.stemmedText, e.stemmedText);
+            }
         }
-        
-        tree = new AhoCorasick();
-        // add each term to the seachtree
-        for (TokenizedText e : tokenizedTerms) {
-            tree.add(e.text, e.text);
-	}
+        else{
+             // add each term to the seachtree
+            for (ProcessedText e : processedTerms) {
+                tree.add(e.tokenizedText, e.tokenizedText);
+            }
+        }
+
+        // create search trie
 	tree.prepare();
     }
     
     /**
-     * Processes the input text and returns the found entities.
+     * Processes the input text and returns the found annotations.
      * @param text  Input text on which the dictionary matching is executed
      * @return 
      */
-    public List<Entity> Annotate(String text){
+    public List<Annotation> GetAnnotations(String text) throws Exception {
         // tokenize text
-        tokenizedText = TokenizeText(text);
+        TokenizeText(text);
 
         // if stemming language was set, perform stemming of the input text
         if(stemming) {
@@ -128,13 +137,13 @@ public class DictionaryAnnotator {
         }
 
         // perform the look-up
-        FindEntities(tokenizedText);
+        FindAnnotations();
         
-        // eliminate overlapping entities
+        // eliminate overlapping annotations
         EliminateOverlapping();
         
-        List<Entity> entitiesToReturn = new ArrayList<Entity>(); 
-        for(Entity e : entities){
+        List<Annotation> entitiesToReturn = new ArrayList<Annotation>(); 
+        for(Annotation e : annotations){
             if(!e.overlap){
                 entitiesToReturn.add(e);
             }
@@ -143,32 +152,113 @@ public class DictionaryAnnotator {
     }
     
     /**
-     * Creates the dictionary from the HashMap which contains label-URI pairs.
-     * @param input The original dictionary as a HashMap (label-URI pairs)
+     * Processes the input text and returns a tagged text.
+     * @param text
      * @return 
      */
-    private String[] ReadDictionary(Map<String,UriRef> dictionary) {
-        String[] labels = new String[dictionary.size()];
-        Set set = dictionary.entrySet();
+    public String GetURITaggedText(String text) throws Exception {
+        String taggedText = "";
+        String plain, tagged;
+        
+        // tokenize text
+        TokenizeText(text);
+        
+        // if stemming language was set, perform stemming of the input text
+        if(stemming) {
+            StemText();
+        }
+        
+        // perform the look-up
+        FindAnnotations();
+        
+        // eliminate overlapping annotations
+        EliminateOverlapping();
+        
+        int prevEnd = 0;
+        for(Annotation e : annotations){
+            if(!e.isOverlap()){
+                if (e.getBegin() < prevEnd && prevEnd != 0) {
+                    if (e.getEnd() > prevEnd) {
+                        prevEnd = e.getEnd();
+                    }
+                } else {
+                    plain = text.substring(prevEnd, e.getBegin());
+                    tagged = "<entity uri=\"" + e.getUri() + "\">" + text.substring(e.getBegin(), e.getEnd()) + "</entity>";
+                    taggedText += plain + tagged;
+                    prevEnd = e.getEnd();
+                }
+            }
+        }
+        taggedText += text.substring(prevEnd, text.length());
+        return taggedText;
+    }
+    
+    /**
+     * Processes the input text and returns a tagged text.
+     * @param text
+     * @return 
+     */
+    public String GetTypeTaggedText(String text) throws Exception {
+        String taggedText = "";
+        String plain, tagged;
+        
+        // tokenize text
+        TokenizeText(text);
+
+        // if stemming language was set, perform stemming of the input text
+        if(stemming) {
+            StemText();
+        }
+        
+        // perform the look-up
+        FindAnnotations();
+        
+        // eliminate overlapping annotations
+        EliminateOverlapping();
+        
+        int prevEnd = 0;
+        for(Annotation e : annotations){
+            if(!e.isOverlap()){
+                //e.setType(originalDictionary.GetType(e.getUri()));
+                if (e.getBegin() < prevEnd && prevEnd != 0) {
+                    if (e.getEnd() > prevEnd) {
+                        prevEnd = e.getEnd();
+                    }
+                } else {
+                    plain = text.substring(prevEnd, e.getBegin());
+                    tagged = "<" + e.getType().toUpperCase() + ">" + text.substring(e.getBegin(), e.getEnd()) + "</" + e.getType().toUpperCase() + ">";
+                    taggedText += plain + tagged;
+                    prevEnd = e.getEnd();
+                }
+            }
+        }
+        taggedText += text.substring(prevEnd, text.length());
+        return taggedText;
+    }
+    
+    /**
+     * Creates the dictionary from the HashMap which contains foundText-URI pairs.
+     * @param input The original dictionary as a HashMap (foundText-URI pairs)
+     * @return 
+     */
+    private String[] ReadDictionary() {
+        String[] labels = new String[dictionary.keywords.size()];
+        Set set = dictionary.keywords.entrySet();
         Iterator iterator = set.iterator();
         
         int index = 0;
-        String label;
-        UriRef uri;
         while(iterator.hasNext()){
             Map.Entry me = (Map.Entry)iterator.next();
-            label = (String) me.getKey();
-            uri = (UriRef) me.getValue();
-            labels[index] = label;
-            originalDictionary.AddElement(label, uri);       
+            labels[index] = (String) me.getKey();
             index++;
-        }         
+        } 
+
         return labels;
     }
 
     /**
-     * Tokenizes the all the entities in the dictionary and returns the 
-     * tokenized entities. 
+     * Tokenizes the all the annotations in the dictionary and returns the 
+     * tokenized annotations. 
      * If caseSensitive is true and caseSensitiveLength > 0 all tokens 
      * whose length is equal or bigger than the caseSensitiveLength are 
      * converted to lowercase.
@@ -177,23 +267,23 @@ public class DictionaryAnnotator {
      * If caseSensitive is false all tokens are converted to lowercase.
      * 
      * @param originalTerms
-     * @return 
      */
-    public List<TokenizedText> TokenizeTerms(String[] originalTerms) {
+    public void TokenizeTerms(String[] originalTerms) {
         StringBuilder sb;
         Span[] spans;
         String[] terms = originalTerms;
         
-        List<TokenizedText> tlist = new ArrayList<TokenizedText>();
-        TokenizedText tokText;
+        processedTerms = new ArrayList<ProcessedText>();
+        ProcessedText processedTerm;
         for (int i = 0; i < originalTerms.length; i++) {
-            tokText = new TokenizedText(originalTerms[i]);
+            processedTerm = new ProcessedText(originalTerms[i]);
 
             spans = tokenizer.tokenizePos(terms[i]);
             sb = new StringBuilder();
             
             Token t;
-            String word;
+            String word, name;
+            Concept concept;
             int position = 1;
             int begin, end;
             sb.append(" ");
@@ -218,7 +308,7 @@ public class DictionaryAnnotator {
 
                         position = end;
 
-                        tokText.addToken(t);
+                        processedTerm.addToken(t);
 
                         sb.append(word);
                         sb.append(" ");
@@ -240,7 +330,7 @@ public class DictionaryAnnotator {
 
                         position = end;
 
-                        tokText.addToken(t);
+                        processedTerm.addToken(t);
 
                         sb.append(word);
                         sb.append(" ");
@@ -264,18 +354,20 @@ public class DictionaryAnnotator {
 
                     position = end;
 
-                    tokText.addToken(t);
+                    processedTerm.addToken(t);
 
                     sb.append(word);
                     sb.append(" ");
                 }
             }
-              
+            name = sb.toString();
+            concept = dictionary.GetConcept(processedTerm.originalText, false);
             
-            tokText.setText(sb.toString());
-            tlist.add(tokText);
+            processedTerm.setTokenizedText(sb.toString());
+            processedTerms.add(processedTerm);
+            
+            originalDictionary.AddElement(name.substring(1, name.length() - 1), concept);
         }
-        return tlist;
     }
     
     /**
@@ -288,13 +380,12 @@ public class DictionaryAnnotator {
      * If caseSensitive is false all tokens are converted to lowercase.
      * 
      * @param text
-     * @return 
      */
-    public TokenizedText TokenizeText(String text) {
+    public void TokenizeText(String text) {
         Span[] spans;
         StringBuilder sb;
         
-        TokenizedText tokText = new TokenizedText(text);
+        processedText = new ProcessedText(text);
 
         spans = tokenizer.tokenizePos(text);
         sb = new StringBuilder();
@@ -326,7 +417,7 @@ public class DictionaryAnnotator {
 
                     position = end;
 
-                    tokText.addToken(t);
+                    processedText.addToken(t);
 
                     sb.append(word);
                     sb.append(" ");
@@ -335,7 +426,6 @@ public class DictionaryAnnotator {
             else{
                 for (Span span : spans) {
                     word = text.substring(span.getStart(), span.getEnd());
-                    System.out.println(word);
                     t = new Token(word);
                     t.setOriginalBegin(span.getStart());
                     t.setOriginalEnd(span.getEnd());
@@ -348,7 +438,7 @@ public class DictionaryAnnotator {
 
                     position = end;
 
-                    tokText.addToken(t);
+                    processedText.addToken(t);
 
                     sb.append(word);
                     sb.append(" ");
@@ -373,27 +463,28 @@ public class DictionaryAnnotator {
 
                 position = end;
 
-                tokText.addToken(t);
+                processedText.addToken(t);
 
                 sb.append(word);
                 sb.append(" ");
             }
         }
-        tokText.setText(sb.toString());
-        return tokText;
+        processedText.setTokenizedText(sb.toString());
     }
     
     /**
      * This function runs the Aho-Corasick string matching algorithm on the 
      * tokenized (and stemmed) text using the search tree built from the dictionary.
-     * @param tokenizedText The tokenized text
+     * @param processedTerm The tokenized text
      */
-    private void FindEntities(TokenizedText tokenizedText){
-        entities = new ArrayList<Entity>();
-        Entity entity = null;
+    private void FindAnnotations(){
+        annotations = new ArrayList<Annotation>();
+        String text = stemming ? processedText.stemmedText : processedText.tokenizedText;
+        Annotation annotation;
         String str = "";
-        int length = 0, lastIndex = 0, maxlength = 0;
-        for (Iterator iter = tree.search(tokenizedText.text.toCharArray()); iter.hasNext(); ) {
+        Concept concept;
+        int begin, end, length, lastIndex, maxlength;
+        for (Iterator iter = tree.search(text.toCharArray()); iter.hasNext(); ) {
 	    SearchResult result = (SearchResult) iter.next();
             maxlength = 0;
             for(Object e : result.getOutputs()){
@@ -406,50 +497,79 @@ public class DictionaryAnnotator {
             if(!str.equals("")){
             	str = str.substring(1, str.length() - 1);
                 length = str.length();
-                lastIndex = result.getLastIndex() - 1;
+                end = result.getLastIndex() - 1;
+                begin = end - length;
+
+                annotation = processedText.FindMatch(begin, end);
+                annotation.setTokenizedBegin(begin);
+                annotation.setTokenizedEnd(end);
+                annotation.uri = stemming ? processedDictionary.GetURI(str, true) : originalDictionary.GetURI(str, true);
                 
-                entity = tokenizedText.FindMatch((lastIndex - length), lastIndex);
-                //entity.text = str;
-                entity.uri = stemming ? processedDictionary.GetURI(str) : originalDictionary.GetURI(entity.label);
-                entities.add(entity);
+                if(annotation.getUri() != null){
+                    concept = stemming ? processedDictionary.GetConcept(str, true) : originalDictionary.GetConcept(str, true);
+                    
+                    if(concept.IsLabel()){
+                        annotation.label = concept.labelText;
+                        annotation.synonym = null;
+                    }
+                    else{
+                        annotation.label = dictionary.GetLabelByURI(annotation.getUri());
+                        annotation.synonym = concept.labelText;
+                    }
+                    
+                    if(stemming)
+                    {
+                        if(caseSensitive){
+                            annotation.score = LevenshteinDistance.GetNormalizedDistance(concept.labelText, annotation.foundText);
+                        }
+                        else{
+                            annotation.score = LevenshteinDistance.GetNormalizedDistance(concept.labelText.toLowerCase(), annotation.foundText.toLowerCase());
+                            LevenshteinDistance.PrintNormalizedDistance(concept.labelText.toLowerCase(), annotation.foundText.toLowerCase());
+                        }
+                    }
+                    
+                    annotation.type = concept.type;
+                    
+                    annotations.add(annotation);
+                }
             }
 	}
     }
     
     /**
-     * Eliminates the overlaps among all the entities found in the text. If 
-     * we have two entities, Entity1 and Entity2, and Entity1 is within the 
+     * Eliminates the overlaps among all the annotations found in the text. If 
+     * we have two annotations, Entity1 and Entity2, and Entity1 is within the 
      * boundaries of Entity2, then Entity1 is marked and is later discarded.
-     * If the variable eliminateOverlapping is true, entities whose 
+     * If the variable eliminateOverlapping is true, annotations whose 
      * boundaries are overlapping are also marked and are later discarded.
      */
     public void EliminateOverlapping(){
-        Entity e1, e2;
-        for (int i = 0; i < entities.size(); i++) {
-            e1 = entities.get(i);
-            for (int j = 0; j < entities.size(); j++) {
-                e2 = entities.get(j);
+        Annotation e1, e2;
+        for (int i = 0; i < annotations.size(); i++) {
+            e1 = annotations.get(i);
+            for (int j = 0; j < annotations.size(); j++) {
+                e2 = annotations.get(j);
                 if(i == j){
                     continue;
                 }
                 else{
-                    if(e1.begin > e2.end){
+                    if(e1.getBegin() > e2.getEnd()){
                         continue;
                     }
-                    else if(e1.end < e2.begin){
+                    else if(e1.getEnd() < e2.getBegin()){
                         continue;
                     }
                     else{
-                        if(e1.begin >= e2.begin && e1.end <= e2.end){
+                        if(e1.getBegin() >= e2.getBegin() && e1.getEnd() <= e2.getEnd()){
                             e1.overlap = true;
                             break;
                         }
                         else if(eliminateOverlapping){
-                            if(e1.begin > e2.begin && e1.end > e2.end && e1.begin < e2.end){
+                            if(e1.getBegin() > e2.getBegin() && e1.getEnd() > e2.getEnd() && e1.getBegin() < e2.getEnd()){
                                 e1.overlap = true;
                                 break;
                             }
-                            else if(e1.begin < e2.begin && e1.end < e2.end && e1.end < e2.begin){
+                            else if(e1.getBegin() < e2.getBegin() && e1.getEnd() < e2.getEnd() && e1.getEnd() < e2.getBegin()){
                                 e1.overlap = true;
                                 break;
                             }
@@ -467,68 +587,22 @@ public class DictionaryAnnotator {
     }
     
     /**
-     * The function is responsible for the stemming of each entity in the dictionary
+     * The function is responsible for the stemming of each annotation in the dictionary
      * based on the stemming language defined in the constructor.
      */
-    private void StemTerms() {
-        try {
-            int offset = 0;
-            int overallOffset = 0;
-            String word = "";
-            String name;
-            UriRef uri;
-            StringBuilder sb;
-            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
-            SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
-            for (TokenizedText tokenizedText : tokenizedTerms) {
-                sb = new StringBuilder();
-                sb.append(" ");
-                for (Token token : tokenizedText.tokens) {
-                    stemmer.setCurrent(token.text);
-                    stemmer.stem();
-                    word = stemmer.getCurrent();  
-                    
-                    offset = token.text.length() - word.length();
-                    
-                    token.begin -= overallOffset;
-                    overallOffset += offset;
-                    token.end -= overallOffset;
-                    
-                    sb.append(word);
-                    sb.append(" ");
+    private void StemTerms() throws Exception {
+            int offset, overallOffset = 0;
+        String word, name;
+        Concept concept;
+        StringBuilder sb;
 
-                    token.text = word;
-                }
-                name = sb.toString();
-                uri = originalDictionary.GetURI(tokenizedText.originalText);
-                tokenizedText.setText(name);
-                processedDictionary.AddElement(name.substring(1, name.length() - 1), uri);
-            }
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
-    
-    /**
-     * The function is responsible for the stemming of the main text based on
-     * the stemming language defined in the constructor.
-     */
-    private void StemText() {
-        try {
-            int offset = 0;
-            int overallOffset = 0;
-            String word = "";
-            StringBuilder sb = new StringBuilder();
-            Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
-            SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
+        Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
+        SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
 
+        for (ProcessedText processedTerm : processedTerms) {
             sb = new StringBuilder();
             sb.append(" ");
-            for (Token token : tokenizedText.tokens) {
+            for (Token token : processedTerm.tokens) {
                 stemmer.setCurrent(token.text);
                 stemmer.stem();
                 word = stemmer.getCurrent();
@@ -540,19 +614,49 @@ public class DictionaryAnnotator {
                 token.end -= overallOffset;
 
                 sb.append(word);
-
                 sb.append(" ");
 
-                token.text = word;
+                token.stem = word;
             }
-            tokenizedText.setText(sb.toString());
-            
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+            name = sb.toString();
+            concept = dictionary.GetConcept(processedTerm.originalText, false);
+            processedTerm.setStemmedText(name);
+
+            processedDictionary.AddElement(name.substring(1, name.length() - 1), concept);
         }
+    }
+    
+    /**
+     * The function is responsible for the stemming of the main text based on
+     * the stemming language defined in the constructor.
+     */
+    private void StemText() throws Exception{
+            int offset, overallOffset = 0;
+        String word;
+        StringBuilder sb;
+
+        Class stemClass = Class.forName("org.tartarus.snowball.ext." + stemmingLanguage);
+        SnowballStemmer stemmer = (SnowballStemmer) stemClass.newInstance();
+
+        sb = new StringBuilder();
+        sb.append(" ");
+        for (Token token : processedText.tokens) {
+            stemmer.setCurrent(token.text);
+            stemmer.stem();
+            word = stemmer.getCurrent();
+
+            offset = token.text.length() - word.length();
+
+            token.begin -= overallOffset;
+            overallOffset += offset;
+            token.end -= overallOffset;
+
+            sb.append(word);
+
+            sb.append(" ");
+
+            token.stem = word;
+        }
+        processedText.setStemmedText(sb.toString());
     }
 }

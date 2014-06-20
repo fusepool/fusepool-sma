@@ -10,7 +10,7 @@ class DenseEdgeList implements EdgeList {
     private State[] array;
 
     public DenseEdgeList() {
-	this.array = new State[256];
+	this.array = new State[4096];
 	for (int i = 0; i < array.length; i++)
 	    this.array[i] = null;
     }
@@ -30,12 +30,12 @@ class DenseEdgeList implements EdgeList {
 
 
     public State get(char b) {
-	return this.array[(int) b & 0xFF];
+	return this.array[(int) b & 0xFFF];
     }
 
 
     public void put(char b, State s) {
-	this.array[(int) b & 0xFF] = s;
+	this.array[(int) b & 0xFFF] = s;
     }
 
 

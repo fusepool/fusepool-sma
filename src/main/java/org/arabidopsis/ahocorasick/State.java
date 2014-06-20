@@ -36,7 +36,7 @@ class State {
 
 
     public State extend(char b) {
-	if (this.edgeList.get(b) != null)
+        if (this.edgeList.get(b) != null)
 	    return this.edgeList.get(b);
 	State nextState = new State(this.depth + 1);
 	this.edgeList.put(b, nextState);

@@ -94,7 +94,7 @@ public class AhoCorasick {
     */
     private void prepareFailTransitions() {
 	Queue<State> q = new Queue<State>();
-	for(int i = 0; i < 256; i++)
+	for(int i = 0; i < 4096; i++)
 	    if (this.root.get((char) i) != null) {
 		this.root.get((char) i).setFail(this.root);
 		q.add(this.root.get((char) i));
@@ -122,7 +122,7 @@ public class AhoCorasick {
 	transition yet exists at this point.
     */
     private void prepareRoot() {
-	for(int i = 0; i < 256; i++)
+	for(int i = 0; i < 4096; i++)
 	    if (this.root.get((char) i) == null)
 		this.root.put((char) i, this.root);
     }

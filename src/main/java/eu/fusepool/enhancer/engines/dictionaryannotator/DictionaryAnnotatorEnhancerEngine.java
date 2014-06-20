@@ -38,7 +38,6 @@ import opennlp.tools.tokenize.TokenizerME;
 import opennlp.tools.tokenize.TokenizerModel;
 import org.apache.clerezza.platform.Constants;
 import org.apache.clerezza.platform.graphprovider.content.ContentGraphProvider;
-import org.apache.clerezza.rdf.core.Language;
 import org.apache.clerezza.rdf.core.LiteralFactory;
 import org.apache.clerezza.rdf.core.MGraph;
 import org.apache.clerezza.rdf.core.Resource;
@@ -80,12 +79,12 @@ import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_SELECTED_TEXT;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_REFERENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_CONFIDENCE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_END;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_START;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_LABEL;
-import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.ENHANCER_ENTITY_TYPE;
 import static org.apache.stanbol.enhancer.servicesapi.rdf.Properties.DC_TYPE;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -126,10 +125,16 @@ public class DictionaryAnnotatorEnhancerEngine
     public static final String GRAPH_URI = "eu.fusepool.enhancer.engines.dictionaryannotator.graphURI";
     
     /**
-     * The field used to retrieve the label of each entity in the dictionary.
+     * The field used to retrieve the foundText of each entity in the dictionary.
      */
     @Property
     public static final String LABEL_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.labelField";
+    
+    /**
+     * The field used to retrieve the synonym labels of each entity in the dictionary.
+     */
+    @Property
+    public static final String SYNONYM_FIELD = "eu.fusepool.enhancer.engines.dictionaryannotator.synonymField";
     
     /**
      * The field used to retrieve the URI value of each entity in the dictionary.
@@ -149,12 +154,8 @@ public class DictionaryAnnotatorEnhancerEngine
     @Property(cardinality = 10)
     public static final String RDF_FIELDS = "eu.fusepool.enhancer.engines.dictionaryannotator.rdfFields"; 
     
-    /**
-     * The type and the URI of the type of the this model separated by a semicolon. The syntax 
-     * is "{type};{uri}", for example "PERSON;http://dbpedia.org/ontology/Person"
-     */
     @Property
-    public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator.type";
+    public static final String TYPE = "eu.fusepool.enhancer.engines.dictionaryannotator_beer.type";
     
     /**
      * A list of the avaliable languages for stemming.
@@ -231,11 +232,11 @@ public class DictionaryAnnotatorEnhancerEngine
     private String description;
     private String graphURI;
     private String labelField;
+    private String synonymField;
     private String URIField;
     private List<String> rdfFields;
-    private String type;
-    private UriRef typeURI;
     private List<String> entityPrefixes;
+    private UriRef typeURI;
     private String stemmingLanguage;
     private Boolean caseSensitive;
     private Integer caseSensitiveLength;
@@ -258,9 +259,12 @@ public class DictionaryAnnotatorEnhancerEngine
             // reading graph uri property
             Object gu = config.get(GRAPH_URI);
             graphURI = gu == null || gu.toString().isEmpty() ? null : gu.toString();
-            // reading label field property
+            // reading foundText field property
             Object lf = config.get(LABEL_FIELD);
             labelField = lf == null || lf.toString().isEmpty() ? null : lf.toString();
+            // reading synonym field property
+            Object sf = config.get(SYNONYM_FIELD);
+            synonymField = sf == null || sf.toString().isEmpty() ? null : sf.toString();
             // reading uri field property
             Object uf = config.get(URI_FIELD);
             URIField = uf == null || uf.toString().isEmpty() ? null : uf.toString();
@@ -314,12 +318,7 @@ public class DictionaryAnnotatorEnhancerEngine
             }
             // reading type property
             Object t = config.get(TYPE);        
-            if(t != null || !t.toString().isEmpty())
-            {
-                String[] val = t.toString().split(";", 2);
-                type = val[0];
-                typeURI = new UriRef(val[1]);
-            }
+            typeURI = t == null || t.toString().isEmpty() ? null : new UriRef(t.toString());
             // reading stemming language property
             Object sl = config.get(STEMMING_LANGUAGE);
             stemmingLanguage = sl == null ? "None" : sl.toString();
@@ -351,15 +350,27 @@ public class DictionaryAnnotatorEnhancerEngine
         }
         
         // concatenating SPARQL query
-        String sparqlQuery = "";
+        String sparqlLabelQuery = "";
         for (String prefix : entityPrefixes) {
-            sparqlQuery += "PREFIX " + prefix + "\n";
+            sparqlLabelQuery += "PREFIX " + prefix + "\n";
         }
-        sparqlQuery += "SELECT distinct ?uri ?label WHERE { "
+        sparqlLabelQuery += "SELECT distinct ?uri ?label WHERE { "
                 + "?uri a " + URIField + " ."   
                 + "?uri " + labelField + " ?label ."
                 + " }";
 
+        // concatenating second SPARQL query
+        String sparqlSynonymQuery = "";
+        if(synonymField != null){
+            for (String prefix : entityPrefixes) {
+                sparqlSynonymQuery += "PREFIX " + prefix + "\n";
+            }
+            sparqlSynonymQuery += "SELECT distinct ?uri ?label WHERE { "
+                    + "?uri a " + URIField + " ."   
+                    + "?uri " + synonymField + " ?label ."
+                    + " }";
+        }
+        
         try {
             // get TcManager instance
             TcManager tcManager = TcManager.getInstance();
@@ -382,7 +393,7 @@ public class DictionaryAnnotatorEnhancerEngine
             // parse the SPARQL query
             SelectQuery selectQuery = null;
             try {
-                selectQuery = (SelectQuery) QueryParser.getInstance().parse(sparqlQuery);
+                selectQuery = (SelectQuery) QueryParser.getInstance().parse(sparqlLabelQuery);
             } catch (ParseException e) {
                 log.error("Cannot parse the SPARQL query", e);
             }
@@ -395,30 +406,65 @@ public class DictionaryAnnotatorEnhancerEngine
 
                     // execute the SPARQL query
                     ResultSet resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
-                    //ResultSet resultSet = (ResultSet) tcManager.executeSparqlQuery(sparqlQuery, graph);
+                    //ResultSet resultSet = (ResultSet) tcManager.executeSparqlQuery(sparqlLabelQuery, graph);
                     
                     dictionary = new DictionaryStore();
                     while (resultSet.hasNext()) {
                         SolutionMapping mapping = resultSet.next();
                         try{
                             Resource r = mapping.get("label");
-                            // if the label is a TypedLiteral
+                            // if the foundText is a TypedLiteral
                             if(r instanceof TypedLiteral){
                                 TypedLiteral label = (TypedLiteral) r;
                                 UriRef uri = (UriRef) mapping.get("uri");
                                 // add elements to the dictionary
-                                dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                                dictionary.AddOriginalElement(label.getLexicalForm(), "label", uri.getUnicodeString());
                             }
                             // else use PlainLiteralImpl
                             else{
                                 PlainLiteralImpl label = (PlainLiteralImpl) r;
                                 UriRef uri = (UriRef) mapping.get("uri");
                                 // add elements to the dictionary
-                                dictionary.AddOriginalElement(label.getLexicalForm(), uri);
+                                dictionary.AddOriginalElement(label.getLexicalForm(), "label", uri.getUnicodeString());
                             }
                         }catch(Exception e){
                             log.error("Cannot read resultset", e);
                             break;
+                        }
+                    }
+                    
+                    // get synonyms
+                    if(!sparqlSynonymQuery.isEmpty()){
+                        selectQuery = null;
+                        try {
+                            selectQuery = (SelectQuery) QueryParser.getInstance().parse(sparqlSynonymQuery);
+                        } catch (ParseException e) {
+                            log.error("Cannot parse the SPARQL query", e);
+                        }
+                        // execute the SPARQL query
+                        resultSet = tcManager.executeSparqlQuery(selectQuery, graph);
+                        
+                        while (resultSet.hasNext()) {
+                            SolutionMapping mapping = resultSet.next();
+                            try {
+                                Resource r = mapping.get("label");
+                                // if the foundText is a TypedLiteral
+                                if (r instanceof TypedLiteral) {
+                                    TypedLiteral label = (TypedLiteral) r;
+                                    UriRef uri = (UriRef) mapping.get("uri");
+                                    // add elements to the dictionary
+                                    dictionary.AddOriginalElement(label.getLexicalForm(), "synonym", uri.getUnicodeString());
+                                } // else use PlainLiteralImpl
+                                else {
+                                    PlainLiteralImpl label = (PlainLiteralImpl) r;
+                                    UriRef uri = (UriRef) mapping.get("uri");
+                                    // add elements to the dictionary
+                                    dictionary.AddOriginalElement(label.getLexicalForm(), "synonym", uri.getUnicodeString());
+                                }
+                            } catch (Exception e) {
+                                log.error("Cannot read resultset", e);
+                                break;
+                            }
                         }
                     }
 
@@ -472,10 +518,10 @@ public class DictionaryAnnotatorEnhancerEngine
     @Override
     public void computeEnhancements(ContentItem ci) throws EngineException {
         Map.Entry<UriRef, Blob> contentPart = null;
-        List<Entity> entities = null;
+        List<Annotation> annotations = null;
         String text = "";
         List<String> texts = new ArrayList<String>();
-        Document rdf = null;
+        Document rdf;
         Element rootElement;
         
         // if MIME typs is text/plain
@@ -493,8 +539,8 @@ public class DictionaryAnnotatorEnhancerEngine
             }
 
             try {
-                // extract entities from text input
-                entities = annotator.Annotate(text);
+                // extract annotations from text input
+                annotations = annotator.GetAnnotations(text);
             } catch (Exception e) {
                 log.warn("Could not recognize entities", e);
                 return;
@@ -524,13 +570,13 @@ public class DictionaryAnnotatorEnhancerEngine
             }
 
             try {
-                entities = new ArrayList<Entity>();
+                annotations = new ArrayList<Annotation>();
                 for (String textItem : texts) {
-                    // extract entities from each text part
-                    List<Entity> currentEntities = annotator.Annotate(textItem);
-                    if (currentEntities != null) {
-                        // collect all entities from the document
-                        entities.addAll(currentEntities);
+                    // extract annotations from each text part
+                    List<Annotation> currentAnnotations = annotator.GetAnnotations(textItem);
+                    if (currentAnnotations != null) {
+                        // collect all annotations from the document
+                        annotations.addAll(currentAnnotations);
                     }
                 }
             } catch (Exception e) {
@@ -547,27 +593,31 @@ public class DictionaryAnnotatorEnhancerEngine
                     + "EnhancementJobManager!");
         }
 
-
-        // add entities to metadata
-        if (entities != null) {
+        // add annotations to metadata
+        if (annotations != null) {
             LiteralFactory literalFactory = LiteralFactory.getInstance();
             MGraph g = ci.getMetadata();
             ci.getLock().writeLock().lock();
             try {
-                Language language = new Language("en");
+//                System.out.println("");
+//                System.out.println("--- Annotations (" + annotations.size() + ") ---");
                 // add enhancements to MGraph
-                for (Entity e : entities) {
-                    UriRef textEnhancement = EnhancementEngineHelper.createTextEnhancement(ci, this);
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_CONFIDENCE, literalFactory.createTypedLiteral(e.score)));
-                    g.add(new TripleImpl(textEnhancement, DC_TYPE, typeURI));
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_TYPE, new PlainLiteralImpl(type))); 
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_LABEL, new PlainLiteralImpl(e.label,language)));
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_START, new PlainLiteralImpl(Integer.toString(e.begin))));
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_END, new PlainLiteralImpl(Integer.toString(e.end))));
-                    g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_REFERENCE, e.uri));
-                    g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDF.type, typeURI));
-                    g.add(new TripleImpl(e.uri, org.apache.clerezza.rdf.ontologies.RDFS.label, new PlainLiteralImpl(e.label,language)));   
+                for (Annotation a : annotations) {
+                    //System.out.println(a.toString());
+                    if(a.HasNoNull()){
+                        UriRef textEnhancement = EnhancementEngineHelper.createTextEnhancement(ci, this);
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_CONFIDENCE, literalFactory.createTypedLiteral(a.getScore())));
+                        g.add(new TripleImpl(textEnhancement, DC_TYPE, typeURI));
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_LABEL, new PlainLiteralImpl(a.getLabel())));
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_START, new PlainLiteralImpl(Integer.toString(a.getBegin()))));
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_END, new PlainLiteralImpl(Integer.toString(a.getEnd()))));
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_ENTITY_REFERENCE, new UriRef(a.getUri())));
+                        g.add(new TripleImpl(textEnhancement, ENHANCER_SELECTED_TEXT, new PlainLiteralImpl(a.getFoundText())));
+                        g.add(new TripleImpl(new UriRef(a.getUri()), org.apache.clerezza.rdf.ontologies.RDFS.label, new PlainLiteralImpl(a.getLabel())));  
+                    }
                 }
+//                System.out.println("------------------");
+//                System.out.println("");
             } finally {
                 ci.getLock().writeLock().unlock();
             }
@@ -576,7 +626,7 @@ public class DictionaryAnnotatorEnhancerEngine
     
     /**
      * ServiceProperties are currently only used for automatic ordering of the 
-     * execution of EnhancementEngines (e.g. by the WeightedChain implementation).
+     * execution of EnhancementEngines (a.g. by the WeightedChain implementation).
      * Default ordering means that the engine is called after all engines that
      * use a value < {@link ServiceProperties#ORDERING_CONTENT_EXTRACTION}
      * and >= {@link ServiceProperties#ORDERING_EXTRACTION_ENHANCEMENT}.
