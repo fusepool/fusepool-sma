@@ -17,7 +17,7 @@ Currenty Fusepool-SMA has one enhancer instance that uses the disease ontology f
 
 ###Install
 
-Clone the repository to your local machine
+To clone the repository to your local machine
 
 <pre>git clone https://github.com/fusepool/fusepool-sma.git</pre>
 
