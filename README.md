@@ -18,12 +18,13 @@ Currenty Fusepool-SMA has one enhancer instance that uses the disease ontology f
 ###Install
 
 Clone the repository to your local machine
-<code>git clone https://github.com/fusepool/fusepool-sma.git</code>
+
+<pre>git clone https://github.com/fusepool/fusepool-sma.git</pre>
 
 To compile the bundle run
 
-<code>mvn install</code>
+<pre>mvn install</pre>
 
 To deploy the engine to a stanbol instance running on localhost port 8080 run
 
-<code>mvn org.apache.sling:maven-sling-plugin:install</code>
+<pre>mvn org.apache.sling:maven-sling-plugin:install</pre>
