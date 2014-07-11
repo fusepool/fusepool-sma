@@ -101,7 +101,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.clerezza</groupId>
-            <artifactId>org.apache.clerezza.platform.graphprovider.content</artifactId>
+            <artifactId>platform.graphprovider.content</artifactId>
             <version>0.6-incubating-SNAPSHOT</version>
             <type>jar</type>
         </dependency>
